@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>ExamBuilder - Tạo Đề Kiểm Tra</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<header class="app-header no-print">
+  <h1>ExamBuilder</h1>
+  <div class="toolbar" id="toolbar">
+    <label class="switch">
+      <input type="checkbox" id="studentModeToggle" />
+      <span class="switch-track"><span class="switch-thumb"></span></span>
+      <span class="switch-text">Chế độ Học sinh</span>
+    </label>
+
+    <div class="zoom-controls">
+      <button id="zoomOutBtn" type="button" title="Thu nhỏ">A−</button>
+      <span id="zoomLevelLabel">100%</span>
+      <button id="zoomInBtn" type="button" title="Phóng to">A+</button>
+    </div>
+
+    <button id="shareBtn" type="button" class="tool-btn" disabled>Tạo Link Chia Sẻ</button>
+    <button id="exportPdfBtn" type="button" class="tool-btn" disabled>Xuất PDF</button>
+    <button id="exportWordBtn" type="button" class="tool-btn" disabled>Xuất Word</button>
+  </div>
+</header>
+
+<main class="app-main" id="appMain">
+  <section class="input-panel no-print" id="inputPanel">
+    <div class="exam-meta">
+      <input type="text" id="examTitleInput" placeholder="Tên đề thi (VD: Đề kiểm tra HK1 - Toán 10)" />
+      <div class="meta-row">
+        <input type="text" id="examSubjectInput" placeholder="Môn học" />
+        <input type="number" id="examDurationInput" placeholder="Thời gian (phút)" min="1" />
+      </div>
+      <input type="text" id="examSchoolInput" placeholder="Tên trường / Tiêu đề đầu trang" />
+    </div>
+
+    <div class="bg-panel">
+      <label class="switch">
+        <input type="checkbox" id="bgEnableToggle" />
+        <span class="switch-track"><span class="switch-thumb"></span></span>
+        <span class="switch-text">Nền PDF</span>
+      </label>
+      <select id="bgSelect" disabled>
+        <option value="">— Chọn ảnh nền —</option>
+      </select>
+      <label class="bg-opacity-label">
+        Độ mờ
+        <input type="range" id="bgOpacityRange" min="5" max="100" value="30" disabled />
+        <span id="bgOpacityValue">30%</span>
+      </label>
+    </div>
+
+    <div class="tabs">
+      <button class="tab-btn active" data-tab="text" type="button">Dán văn bản</button>
+      <button class="tab-btn" data-tab="upload" type="button">Tải file</button>
+      <button class="tab-btn" data-tab="form" type="button">Nhập Form</button>
+    </div>
+
+    <div class="tab-content active" id="tab-text">
+      <textarea id="rawTextInput" rows="12" placeholder="Dán nội dung câu hỏi theo định dạng chuẩn (xem khu 'Prompt mẫu cho AI' bên dưới để lấy prompt sinh câu hỏi từ Gemini)..."></textarea>
+    </div>
+
+    <div class="tab-content" id="tab-upload">
+      <input type="file" id="fileInput" accept=".json,.csv,.txt,.docx" />
+      <p class="hint">Hỗ trợ định dạng: .json, .csv, .txt, .docx (nội dung Word phải theo đúng cấu trúc trong khu "Prompt mẫu cho AI" bên dưới)</p>
+    </div>
+
+    <div class="tab-content" id="tab-form">
+      <div class="form-fields">
+        <select id="formQuestionType">
+          <option value="MCQ">Trắc nghiệm nhiều đáp án</option>
+          <option value="FILL_BLANK">Trắc nghiệm điền từ</option>
+          <option value="TRUE_FALSE">Đúng / Sai</option>
+          <option value="ESSAY">Tự luận</option>
+        </select>
+        <select id="formDifficulty">
+          <option value="NB">Nhận biết</option>
+          <option value="TH">Thông hiểu</option>
+          <option value="VD">Vận dụng</option>
+          <option value="VDC">Vận dụng cao</option>
+        </select>
+        <textarea id="formContent" rows="3" placeholder="Nội dung đề bài..."></textarea>
+
+        <div id="formOptionsMCQ" class="form-options">
+          <div class="form-option-row"><input type="radio" name="formCorrectOption" value="A" checked /><input type="text" class="form-option-text" data-key="A" placeholder="Lựa chọn A" /></div>
+          <div class="form-option-row"><input type="radio" name="formCorrectOption" value="B" /><input type="text" class="form-option-text" data-key="B" placeholder="Lựa chọn B" /></div>
+          <div class="form-option-row"><input type="radio" name="formCorrectOption" value="C" /><input type="text" class="form-option-text" data-key="C" placeholder="Lựa chọn C (tùy chọn)" /></div>
+          <div class="form-option-row"><input type="radio" name="formCorrectOption" value="D" /><input type="text" class="form-option-text" data-key="D" placeholder="Lựa chọn D (tùy chọn)" /></div>
+        </div>
+
+        <input type="text" id="formFillBlankAnswer" class="form-hidden" placeholder="Đáp án đúng (điền từ)" />
+
+        <select id="formTrueFalseAnswer" class="form-hidden">
+          <option value="Dung">Đúng</option>
+          <option value="Sai">Sai</option>
+        </select>
+
+        <input type="number" id="formDraftLines" class="form-hidden" placeholder="Số dòng kẻ nháp" min="1" value="5" />
+
+        <textarea id="formExplanation" rows="2" placeholder="Lời giải thích / gợi ý..."></textarea>
+
+        <div class="form-add-row">
+          <button id="addFormQuestionBtn" type="button" class="secondary-btn">+ Thêm câu hỏi vào danh sách</button>
+          <button id="cancelEditFormBtn" type="button" class="secondary-btn form-hidden">Hủy sửa</button>
+        </div>
+      </div>
+
+      <ul id="formQuestionList" class="form-question-list"></ul>
+    </div>
+
+    <button id="generateBtn" type="button" class="primary-btn">Sinh Đề Kiểm Tra</button>
+    <p class="error-message" id="errorMessage"></p>
+
+    <div class="multi-code-panel" id="multiCodePanel">
+      <button type="button" class="collapse-toggle" id="multiCodeToggle" aria-expanded="false">
+        <span>🧩 Trộn &amp; Tạo nhiều mã đề</span>
+        <span class="chevron">▾</span>
+      </button>
+      <div class="collapse-body" id="multiCodeBody">
+        <p class="hint">Xáo trộn câu hỏi (và đáp án trắc nghiệm) từ đề vừa sinh ở trên để tạo nhiều mã đề khác nhau, hạn chế trùng lặp giữa các mã.</p>
+        <div class="meta-row">
+          <label class="field-label">Số mã đề (q)
+            <input type="number" id="multiCodeCount" min="2" max="50" value="4" />
+          </label>
+          <label class="field-label">Số bắt đầu
+            <input type="number" id="multiCodeStart" min="0" value="101" />
+          </label>
+        </div>
+        <label class="field-label">Tiền tố mã đề
+          <input type="text" id="multiCodePrefix" value="Đề" />
+        </label>
+        <button id="generateMultiCodeBtn" type="button" class="primary-btn" disabled>Tạo Mã Đề</button>
+        <p class="hint" id="multiCodeSummary"></p>
+      </div>
+    </div>
+  </section>
+
+  <section class="preview-panel" id="previewPanel">
+    <div id="examPrintBg" class="exam-print-bg"></div>
+    <div class="code-tabs no-print" id="codeTabs"></div>
+    <div id="examContainer" class="exam-container">
+      <p class="empty-hint">Chưa có đề thi nào. Hãy nhập dữ liệu ở bảng bên trái và bấm "Sinh Đề Kiểm Tra".</p>
+    </div>
+  </section>
+</main>
+
+<section class="prompt-reference no-print" id="promptReferenceSection">
+  <h2 class="prompt-reference-title">Prompt mẫu cho AI &amp; các loại câu hỏi hỗ trợ</h2>
+
+  <div class="question-type-legend">
+    <div class="legend-badge legend-mcq">
+      <span class="legend-icon">A/B/C/D</span>
+      <div>
+        <strong>Trắc nghiệm</strong>
+        <span>4 lựa chọn A, B, C, D</span>
+      </div>
+    </div>
+    <div class="legend-badge legend-tf">
+      <span class="legend-icon">✓ / ✗</span>
+      <div>
+        <strong>Đúng / Sai</strong>
+        <span>Đúng hoặc Sai</span>
+      </div>
+    </div>
+    <div class="legend-badge legend-fill">
+      <span class="legend-icon">___</span>
+      <div>
+        <strong>Điền từ</strong>
+        <span>Điền vào chỗ trống</span>
+      </div>
+    </div>
+    <div class="legend-badge legend-essay">
+      <span class="legend-icon">✎</span>
+      <div>
+        <strong>Tự luận</strong>
+        <span>Trả lời / trình bày tự do</span>
+      </div>
+    </div>
+  </div>
+
+  <details class="prompt-accordion" id="promptAccordion">
+    <summary>Xem &amp; sao chép prompt để dán vào Gemini / ChatGPT / Claude</summary>
+    <div class="prompt-accordion-body">
+      <div class="prompt-toolbar">
+        <p class="hint">Thay <code>[NHẬP MÔN HỌC/CHỦ ĐỀ Ở ĐÂY]</code> bằng chủ đề bạn muốn trước khi dán vào AI.</p>
+        <button type="button" id="copyPromptBtn" class="secondary-btn">📋 Copy Prompt</button>
+      </div>
+      <pre class="prompt-text" id="promptText"></pre>
+
+      <details class="prompt-example-accordion">
+        <summary>Xem ví dụ kết quả mẫu (dán thử ngay, không cần gọi AI)</summary>
+        <div class="prompt-toolbar">
+          <p class="hint">Có thể copy và dán thẳng vào tab "Dán văn bản" rồi bấm "Sinh Đề Kiểm Tra" để xem thử.</p>
+          <button type="button" id="copyExampleBtn" class="secondary-btn">📋 Copy Ví dụ</button>
+        </div>
+        <pre class="prompt-text" id="promptExampleText"></pre>
+      </details>
+    </div>
+  </details>
+
+  <div class="copy-toast" id="copyToast"></div>
+</section>
+
+<div class="modal-overlay no-print" id="shareModal">
+  <div class="modal">
+    <h3>Chia sẻ đề thi</h3>
+    <input type="text" id="shareLinkOutput" readonly />
+    <p class="hint" id="shareRevokeHint"></p>
+    <div class="modal-actions">
+      <button id="revokeShareLinkBtn" type="button" class="secondary-btn form-hidden">Thu hồi link</button>
+      <button id="copyShareLinkBtn" type="button" class="primary-btn">Sao chép</button>
+      <button id="closeShareModalBtn" type="button" class="secondary-btn">Đóng</button>
+    </div>
+  </div>
+</div>
+
+<script src="/vendor/docx/index.umd.cjs"></script>
+<script src="/vendor/mammoth/mammoth.browser.js"></script>
+<script type="module" src="script.js"></script>
+</body>
+</html>

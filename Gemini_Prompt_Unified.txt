@@ -1,0 +1,108 @@
+GEMINI PROMPT TEMPLATE — ExamBuilder (bản hợp nhất)
+======================================================
+File này thay thế 2 file cũ "Gemini_Prompt_Example.txt" và "Gemini_Prompt_Template.txt".
+Gồm 3 phần: (1) Hướng dẫn sử dụng, (2) Prompt để dán vào AI, (3) Ví dụ kết quả mẫu.
+
+======================================================
+PHẦN 1 — HƯỚNG DẪN SỬ DỤNG
+======================================================
+1. Copy toàn bộ đoạn PROMPT ở Phần 2 bên dưới.
+2. Thay [NHẬP MÔN HỌC/CHỦ ĐỀ Ở ĐÂY] bằng môn học / chủ đề bạn muốn ra đề.
+3. Dán vào Gemini Pro (hoặc ChatGPT/Claude...) để sinh câu hỏi.
+4. Copy toàn bộ nội dung AI trả về, dán vào tab "Dán văn bản" trong ứng dụng ExamBuilder,
+   rồi bấm "Sinh Đề Kiểm Tra".
+   (Muốn thử ngay không cần gọi AI? Copy nguyên PHẦN 3 — VÍ DỤ KẾT QUẢ MẪU — và dán thẳng vào đó.)
+
+4 loại câu hỏi được hỗ trợ (Loai):
+  - TN        : Trắc nghiệm nhiều đáp án (4 lựa chọn A, B, C, D)
+  - DUNG_SAI  : Đúng / Sai
+  - DIEN_TU   : Điền vào chỗ trống (dùng ___ để đánh dấu chỗ trống)
+  - TU_LUAN   : Tự luận / trả lời tự do
+
+Muc_Do hỗ trợ: Nhan_Biet, Thong_Hieu, Van_Dung, Van_Dung_Cao
+Header phân đoạn: chỉ cần bọc tên phần giữa dấu "=" (vd =PHAN_1=, ==PHAN_1==, ===PHAN_1=== đều hợp lệ).
+
+======================================================
+PHẦN 2 — PROMPT (copy từ dòng dưới đây đến hết PHẦN 2)
+======================================================
+
+Bạn là chuyên gia khảo thí và biên soạn đề kiểm tra. Hãy tạo nội dung đề thi theo chủ đề [NHẬP MÔN HỌC/CHỦ ĐỀ Ở ĐÂY] tuân thủ CHÍNH XÁC định dạng cấu trúc dưới đây để phần mềm tự động phân tích. Bắt buộc tạo đủ cả 4 loại câu hỏi: TN, DUNG_SAI, DIEN_TU, TU_LUAN.
+
+=PHAN_1_TRAC_NGHIEM=
+[CAU_HOI]
+Loai: TN
+Muc_Do: Nhan_Biet
+De_Bai: Nội dung câu hỏi trắc nghiệm 4 đáp án...
+A. Lựa chọn A
+B. Lựa chọn B
+C. Lựa chọn C
+D. Lựa chọn D
+Dap_An: A
+Loi_Giai: Giải thích chi tiết cho đáp án đúng tại đây.
+
+[CAU_HOI]
+Loai: DUNG_SAI
+Muc_Do: Thong_Hieu
+De_Bai: Nội dung câu hỏi đúng sai...
+Dap_An: Dung
+Loi_Giai: Giải thích tại sao đúng...
+
+[CAU_HOI]
+Loai: DIEN_TU
+Muc_Do: Van_Dung
+De_Bai: Nội dung câu hỏi điền từ (dùng ___ để đánh dấu chỗ trống)...
+Dap_An: đáp án đúng cần điền
+Loi_Giai: Giải thích tại đây...
+
+=PHAN_2_TU_LUAN=
+[CAU_HOI]
+Loai: TU_LUAN
+Muc_Do: Van_Dung_Cao
+De_Bai: Nội dung bài toán/câu hỏi tự luận cần trình bày các bước giải...
+So_Dong_Nhap: 8
+Loi_Giai: Hướng dẫn chấm và các bước giải chi tiết...
+
+======================================================
+(kết thúc PROMPT)
+======================================================
+
+======================================================
+PHẦN 3 — VÍ DỤ KẾT QUẢ MẪU (chủ đề: Toán 6 - Số nguyên)
+======================================================
+Có thể copy toàn bộ phần dưới đây, dán thẳng vào tab "Dán văn bản" trong ExamBuilder
+rồi bấm "Sinh Đề Kiểm Tra" để xem kết quả ngay (không cần gọi AI, dùng thử luôn).
+
+=PHAN_1_TRAC_NGHIEM=
+[CAU_HOI]
+Loai: TN
+Muc_Do: Nhan_Biet
+De_Bai: Kết quả của phép tính (-5) + 3 là bao nhiêu?
+A. -2
+B. 2
+C. -8
+D. 8
+Dap_An: A
+Loi_Giai: (-5) + 3 = -(5 - 3) = -2, vì |-5| > |3| nên kết quả mang dấu âm.
+
+[CAU_HOI]
+Loai: DUNG_SAI
+Muc_Do: Thong_Hieu
+De_Bai: Tích của hai số nguyên âm luôn là một số nguyên dương.
+Dap_An: Dung
+Loi_Giai: Theo quy tắc dấu: (-) x (-) = (+), nên tích của hai số nguyên âm luôn là số dương.
+
+[CAU_HOI]
+Loai: DIEN_TU
+Muc_Do: Van_Dung
+De_Bai: Điền số thích hợp vào chỗ trống: |-12| + |-8| = ___
+Dap_An: 20
+Loi_Giai: |-12| = 12, |-8| = 8, suy ra 12 + 8 = 20.
+
+=PHAN_2_TU_LUAN=
+[CAU_HOI]
+Loai: TU_LUAN
+Muc_Do: Van_Dung_Cao
+De_Bai: Một chiếc tàu ngầm đang ở độ sâu 45m so với mực nước biển. Tàu di chuyển lên 20m rồi tiếp tục lặn xuống 30m. Hỏi tàu ngầm đang ở độ sâu bao nhiêu mét so với mực nước biển? Trình bày lời giải bằng phép tính với số nguyên.
+So_Dong_Nhap: 6
+Loi_Giai: Độ sâu ban đầu: -45m. Sau khi lên 20m: -45 + 20 = -25m. Sau khi lặn xuống 30m: -25 - 30 = -55m. Vậy tàu ngầm đang ở độ sâu 55m so với mực nước biển.
+</content>

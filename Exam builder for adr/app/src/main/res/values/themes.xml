@@ -1,0 +1,4 @@
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <!-- Base theme just hands the window to Compose (Theme.kt); no XML widgets used. -->
+    <style name="Theme.ExamBuilder" parent="android:Theme.Material.Light.NoActionBar" />
+</resources>

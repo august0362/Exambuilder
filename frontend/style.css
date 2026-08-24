@@ -1,0 +1,682 @@
+:root {
+  --color-primary: #2563eb;
+  --color-primary-dark: #1d4ed8;
+  --color-bg: #f3f4f6;
+  --color-surface: #ffffff;
+  --color-border: #e2e8f0;
+  --color-text: #1f2937;
+  --color-text-muted: #6b7280;
+  --color-danger: #dc2626;
+  --color-success: #16a34a;
+  --color-nb: #0891b2;
+  --color-th: #2563eb;
+  --color-vd: #d97706;
+  --color-vdc: #dc2626;
+  --radius: 10px;
+  --font-scale: 1;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: "Segoe UI", system-ui, -apple-system, Roboto, sans-serif;
+  background: var(--color-bg);
+  color: var(--color-text);
+}
+
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 1rem;
+  padding: 0.75rem 1.5rem;
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.app-header h1 {
+  font-size: 1.25rem;
+  margin: 0;
+  color: var(--color-primary-dark);
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.switch {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  user-select: none;
+  font-size: 0.9rem;
+}
+.switch input { display: none; }
+.switch-track {
+  width: 38px;
+  height: 22px;
+  background: #cbd5e1;
+  border-radius: 999px;
+  position: relative;
+  transition: background 0.2s;
+}
+.switch-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 18px;
+  height: 18px;
+  background: #fff;
+  border-radius: 50%;
+  transition: transform 0.2s;
+}
+.switch input:checked + .switch-track { background: var(--color-primary); }
+.switch input:checked + .switch-track .switch-thumb { transform: translateX(16px); }
+
+.zoom-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.9rem;
+}
+.zoom-controls button {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+}
+
+button {
+  cursor: pointer;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  border-radius: 6px;
+  padding: 0.4rem 0.7rem;
+  font-size: 0.85rem;
+  color: var(--color-text);
+}
+button:hover:not(:disabled) { border-color: var(--color-primary); color: var(--color-primary-dark); }
+button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.tool-btn { font-weight: 500; }
+
+.primary-btn {
+  background: var(--color-primary);
+  color: #fff;
+  border-color: var(--color-primary);
+  font-weight: 600;
+  padding: 0.6rem 1rem;
+}
+.primary-btn:hover:not(:disabled) { background: var(--color-primary-dark); color: #fff; }
+
+.secondary-btn {
+  background: #eef2ff;
+  border-color: #c7d2fe;
+  color: var(--color-primary-dark);
+}
+
+.app-main {
+  display: grid;
+  grid-template-columns: 400px 1fr;
+  gap: 1.25rem;
+  padding: 1.25rem 1.5rem;
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .app-main { grid-template-columns: 1fr; }
+}
+
+.app-main.shared-view { grid-template-columns: 1fr; }
+.app-main.shared-view .input-panel { display: none; }
+
+/* Ca 2 cot (input-panel + preview-panel) duoc "ghim" ngay duoi header va
+   gioi han chieu cao theo vien man hinh, moi cot cuon rieng doc lap bang
+   thanh cuon cua chinh no - khong lien quan toi cuon trang chinh. Khu
+   "Prompt mau cho AI" nam ngoai <main>, ngoai vung ghim nay, nen luon o
+   duoi trang va chi hien ra khi cuon tiep ca trang xuong. */
+.input-panel,
+.preview-panel {
+  position: sticky;
+  top: 4.5rem;
+  max-height: calc(100vh - 5.5rem);
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: #94a3b8 var(--color-bg);
+}
+.input-panel::-webkit-scrollbar,
+.preview-panel::-webkit-scrollbar { width: 9px; }
+.input-panel::-webkit-scrollbar-track,
+.preview-panel::-webkit-scrollbar-track { background: var(--color-bg); border-radius: 999px; }
+.input-panel::-webkit-scrollbar-thumb,
+.preview-panel::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 999px; border: 2px solid var(--color-bg); }
+.input-panel::-webkit-scrollbar-thumb:hover,
+.preview-panel::-webkit-scrollbar-thumb:hover { background: var(--color-primary); }
+
+.input-panel {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.exam-meta { display: flex; flex-direction: column; gap: 0.5rem; }
+.meta-row { display: flex; gap: 0.5rem; }
+.meta-row input { flex: 1; }
+
+input[type="text"], input[type="number"], textarea, select {
+  width: 100%;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  font-size: 0.9rem;
+  font-family: inherit;
+  background: #fff;
+  color: var(--color-text);
+}
+textarea { resize: vertical; }
+
+.tabs {
+  display: flex;
+  gap: 0.25rem;
+  border-bottom: 1px solid var(--color-border);
+}
+.tab-btn {
+  flex: 1;
+  border: none;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  padding: 0.5rem;
+  font-size: 0.82rem;
+}
+.tab-btn.active { border-bottom-color: var(--color-primary); color: var(--color-primary-dark); font-weight: 600; }
+
+.tab-content { display: none; flex-direction: column; gap: 0.5rem; }
+.tab-content.active { display: flex; }
+
+.hint { font-size: 0.8rem; color: var(--color-text-muted); margin: 0; }
+
+.form-fields { display: flex; flex-direction: column; gap: 0.5rem; }
+.form-options { display: flex; flex-direction: column; gap: 0.4rem; }
+.form-option-row { display: flex; align-items: center; gap: 0.5rem; }
+.form-option-row input[type="text"] { flex: 1; }
+.form-hidden { display: none; }
+
+.form-add-row { display: flex; gap: 0.5rem; }
+.form-add-row button { flex: 1; }
+
+.form-question-list {
+  list-style: none;
+  margin: 0.5rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  max-height: 320px;
+  overflow-y: auto;
+}
+.form-question-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  padding: 0.5rem 0.7rem;
+  font-size: 0.82rem;
+}
+.form-question-item-info { display: flex; flex-direction: column; gap: 0.2rem; min-width: 0; }
+.form-question-item-info strong { font-size: 0.78rem; color: var(--color-primary-dark); }
+.form-question-item-info span { color: var(--color-text-muted); overflow-wrap: break-word; }
+.form-question-item-actions { display: flex; gap: 0.35rem; flex-shrink: 0; }
+.form-question-item-actions button { padding: 0.2rem 0.5rem; font-size: 0.75rem; }
+.form-question-item-actions .edit-btn { color: var(--color-primary-dark); }
+.form-question-item-actions .delete-btn { color: var(--color-danger); }
+
+.error-message { color: var(--color-danger); font-size: 0.85rem; margin: 0; white-space: pre-wrap; }
+
+.preview-panel { min-width: 0; padding-right: 0.25rem; }
+
+.exam-container {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 2rem;
+  font-size: calc(1rem * var(--font-scale));
+  min-height: 300px;
+  overflow-x: hidden;
+}
+
+.empty-hint { color: var(--color-text-muted); text-align: center; margin: 3rem 0; }
+
+.bg-panel {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.75rem;
+}
+.bg-panel select { flex: 1; min-width: 8rem; }
+.bg-opacity-label { display: flex; align-items: center; gap: 0.4rem; font-size: 0.85rem; color: var(--color-text-muted); }
+
+/* Lop nen PDF: an tren man hinh, chi hien khi in (xem @media print).
+   Dat background-image/opacity qua inline style tu script.js. */
+.exam-print-bg { display: none; }
+
+.exam-title-block { text-align: center; margin-bottom: 1.5rem; }
+.exam-title-block .school-header { font-weight: 600; text-transform: uppercase; margin: 0 0 0.25rem; }
+.exam-title-block .exam-title { font-size: 1.4em; font-weight: 700; margin: 0.25rem 0; }
+.exam-title-block .exam-sub { color: var(--color-text-muted); font-size: 0.95em; }
+
+.question-block { margin-bottom: 2rem; }
+.question-block-title {
+  font-size: 1.1em;
+  font-weight: 700;
+  text-align: center;
+  color: var(--color-primary-dark);
+  border-bottom: 2px solid var(--color-primary);
+  padding-bottom: 0.35rem;
+  margin-bottom: 1rem;
+}
+
+.question-card {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 1rem 1.1rem;
+  margin-bottom: 1rem;
+  background: #fff;
+}
+
+.question-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+.question-number { font-weight: 700; }
+.question-content { flex: 1; min-width: 0; overflow-wrap: break-word; }
+.question-content[contenteditable="true"] { outline: none; border-bottom: 1px dashed transparent; }
+.question-content[contenteditable="true"]:focus { border-bottom-color: var(--color-primary); }
+
+.badge {
+  display: inline-block;
+  font-size: 0.72em;
+  font-weight: 600;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  color: #fff;
+  white-space: nowrap;
+}
+.badge-NB { background: var(--color-nb); }
+.badge-TH { background: var(--color-th); }
+.badge-VD { background: var(--color-vd); }
+.badge-VDC { background: var(--color-vdc); }
+
+.question-actions { display: flex; gap: 0.35rem; flex-shrink: 0; }
+.question-actions button { padding: 0.2rem 0.45rem; font-size: 0.75rem; }
+.delete-question-btn { color: var(--color-danger); }
+
+.options-list { list-style: none; margin: 0.5rem 0; padding: 0; display: flex; flex-direction: column; gap: 0.35rem; }
+.option-row { display: flex; align-items: center; gap: 0.5rem; padding: 0.3rem 0.5rem; border-radius: 6px; }
+.option-row.is-correct { background: #f0fdf4; border: 1px solid var(--color-success); }
+.option-key { font-weight: 700; min-width: 1.2em; }
+.option-text { flex: 1; min-width: 0; overflow-wrap: break-word; }
+.option-text[contenteditable="true"] { outline: none; }
+
+.fill-blank-answer, .true-false-answer {
+  margin: 0.5rem 0;
+  font-weight: 600;
+  color: var(--color-success);
+}
+
+.explanation-box {
+  margin-top: 0.6rem;
+  padding: 0.55rem 0.7rem;
+  background: #fffbeb;
+  border-left: 3px solid #f59e0b;
+  border-radius: 4px;
+  font-size: 0.9em;
+  overflow-wrap: break-word;
+}
+.explanation-box[contenteditable="true"] { outline: none; }
+
+.essay-draft-lines { margin-top: 0.75rem; }
+.essay-draft-lines .draft-line {
+  border-bottom: 1px dashed #94a3b8;
+  height: 1.9em;
+}
+
+.draft-lines-control {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 0.5rem;
+  font-size: 0.82em;
+  color: var(--color-text-muted);
+}
+.draft-lines-control input { width: 60px; padding: 0.2rem 0.4rem; }
+
+.modal-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.5);
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+.modal-overlay.open { display: flex; }
+.modal {
+  background: #fff;
+  border-radius: var(--radius);
+  padding: 1.25rem;
+  width: min(90vw, 460px);
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+.modal h3 { margin: 0; }
+.modal-actions { display: flex; justify-content: flex-end; gap: 0.5rem; }
+
+.exam-container.student-mode .teacher-only { display: none !important; }
+
+.true-false-answer-print { display: none; }
+
+/* Phan so xep chong (tu tren, mau duoi, co gach ngang o giua) - dung form
+   chuan toan hoc thay vi "a/b" nam ngang. Khong co CSS nay thi 2 span
+   .frac-num/.frac-den hien inline lien nhau, doc nham thanh 1 chuoi dinh
+   lien (vi du "AC/BC" bi hien thanh "ACBC"). */
+.frac {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  vertical-align: middle;
+  margin: 0 0.15em;
+  font-size: 0.9em;
+  line-height: 1.15;
+  text-align: center;
+}
+.frac-num,
+.frac-den {
+  display: block;
+  padding: 0 0.25em;
+  white-space: nowrap;
+}
+.frac-num { border-bottom: 1px solid currentColor; }
+
+/* ---------- Multi-code panel (Task 3) ---------- */
+.multi-code-panel {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  /* La con duy nhat trong .input-panel (flex column) co overflow != visible,
+     nen "automatic minimum size" cua no la 0 - neu khong khoa flex-shrink:0,
+     flexbox se co het panel nay xuong gan 0px de "vua" trong max-height cua
+     input-panel thay vi de input-panel tu cuon (dung nhu du dinh). */
+  flex-shrink: 0;
+}
+.collapse-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #eef2ff;
+  border: none;
+  border-radius: 0;
+  padding: 0.6rem 0.8rem;
+  font-weight: 600;
+  font-size: 0.85rem;
+  color: var(--color-primary-dark);
+  transition: background 0.15s;
+}
+.collapse-toggle:hover { background: #e0e7ff; }
+.collapse-toggle .chevron { transition: transform 0.2s; }
+.collapse-toggle[aria-expanded="true"] .chevron { transform: rotate(180deg); }
+.collapse-body {
+  display: none;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 0.8rem;
+  border-top: 1px solid var(--color-border);
+  animation: fadeIn 0.2s ease;
+}
+.collapse-body.open { display: flex; }
+
+.field-label {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+}
+.field-label input { width: 100%; }
+
+#multiCodeSummary { color: var(--color-primary-dark); font-weight: 500; }
+
+/* ---------- Code tabs (nhieu ma de) ---------- */
+.code-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-bottom: 0.75rem;
+}
+.code-tabs:empty { display: none; }
+.code-tab-btn {
+  padding: 0.35rem 0.9rem;
+  border-radius: 999px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  background: var(--color-surface);
+}
+.code-tab-btn.active { background: var(--color-primary); color: #fff; border-color: var(--color-primary); }
+
+.exam-container-hidden { display: none !important; }
+.exam-version { display: none; }
+.exam-version.active { display: block; }
+.exam-version-code-label {
+  text-align: right;
+  font-weight: 700;
+  font-size: 0.85em;
+  color: var(--color-primary-dark);
+  margin-bottom: 0.5rem;
+}
+
+/* ---------- Prompt reference section (Task 2) ---------- */
+.prompt-reference {
+  margin: 0 1.5rem 1.5rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 1.25rem 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+.prompt-reference-title { font-size: 1.05rem; margin: 0; color: var(--color-primary-dark); }
+
+.question-type-legend {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 0.75rem;
+}
+.legend-badge {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.65rem 0.75rem;
+  border-radius: var(--radius);
+  border: 1px solid var(--color-border);
+  background: #f8fafc;
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+.legend-badge:hover { transform: translateY(-1px); box-shadow: 0 2px 8px rgba(15, 23, 42, 0.08); }
+.legend-badge strong { display: block; font-size: 0.85rem; }
+.legend-badge span { display: block; font-size: 0.75rem; color: var(--color-text-muted); }
+.legend-icon {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2.4rem;
+  height: 2.4rem;
+  padding: 0 0.3rem;
+  border-radius: 8px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #fff;
+}
+.legend-mcq .legend-icon { background: var(--color-th); }
+.legend-tf .legend-icon { background: var(--color-success); }
+.legend-fill .legend-icon { background: var(--color-vd); }
+.legend-essay .legend-icon { background: var(--color-vdc); }
+
+.prompt-accordion, .prompt-example-accordion {
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 0.6rem 0.8rem;
+}
+.prompt-accordion summary, .prompt-example-accordion summary {
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.88rem;
+  color: var(--color-primary-dark);
+}
+.prompt-accordion-body { margin-top: 0.75rem; display: flex; flex-direction: column; gap: 0.6rem; }
+.prompt-example-accordion { margin-top: 0.8rem; }
+.prompt-example-accordion .prompt-toolbar,
+.prompt-example-accordion .prompt-text { margin-top: 0.6rem; }
+
+.prompt-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+.prompt-text {
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: #0f172a;
+  color: #e2e8f0;
+  border-radius: 8px;
+  padding: 0.9rem 1rem;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  max-height: 360px;
+  overflow-y: auto;
+  margin: 0;
+}
+
+.copy-toast {
+  position: fixed;
+  bottom: 1.5rem;
+  left: 50%;
+  transform: translateX(-50%) translateY(20px);
+  background: #0f172a;
+  color: #fff;
+  padding: 0.6rem 1.1rem;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s ease, transform 0.25s ease;
+  z-index: 200;
+}
+.copy-toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+@media print {
+  body { background: #fff; }
+  .no-print { display: none !important; }
+  .app-main { display: block; padding: 0; margin: 0; }
+  .input-panel { display: none !important; }
+  .preview-panel {
+    width: 100%;
+    position: static;
+    max-height: none;
+    overflow: visible;
+    padding-right: 0;
+  }
+
+  .exam-container {
+    border: none;
+    box-shadow: none;
+    border-radius: 0;
+    /* Truoc day padding:0 vi le trang do @page margin dam nhiem. Doi sang
+       @page margin:0 + padding o day de nen PDF (.exam-print-bg) co the
+       phu kin ca trang A4 (full-bleed) ma khong bi @page margin che mat. */
+    padding: 2cm 1.5cm;
+    font-size: 12pt;
+    max-width: 100%;
+  }
+
+  /* Nen PDF: phu kin toan bo trang A4, nam duoi noi dung. Anh nen +
+     opacity duoc gan qua inline style tu script.js (state.background). */
+  .exam-print-bg.enabled {
+    display: block;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 210mm;
+    height: 297mm;
+    background-repeat: no-repeat;
+    background-position: center;
+    background-size: cover;
+    z-index: 0;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .exam-container, .code-tabs { position: relative; z-index: 1; }
+
+  .question-card {
+    break-inside: avoid;
+    border: none;
+    border-bottom: 1px solid #ddd;
+    padding: 0.5rem 0;
+    margin-bottom: 0;
+  }
+
+  .question-actions,
+  .delete-question-btn,
+  .draft-lines-control,
+  .option-row button,
+  select.true-false-answer {
+    display: none !important;
+  }
+
+  .true-false-answer-print { display: inline !important; }
+
+  .option-row.is-correct {
+    background: transparent;
+    border: none;
+    font-weight: 700;
+  }
+  .option-row.is-correct .option-key::after { content: " ✓"; }
+
+  [contenteditable] { outline: none !important; }
+
+  /* Nhieu ma de: khi in, hien tat ca (khong chi ma dang active tren man
+     hinh) va ngat trang giua tung ma de. */
+  .exam-version { display: block !important; page-break-after: always; }
+  .exam-version:last-child { page-break-after: auto; }
+  .exam-version-code-label { display: block !important; }
+
+  @page { size: A4; margin: 0; }
+}
