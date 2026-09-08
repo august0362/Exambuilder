@@ -27,7 +27,8 @@ describe('frontend/promptTemplate.js <-> Gemini_Prompt_Unified.txt (dong bo)', (
   });
 
   test('TC-PT-04: LaTeX trong template khong bi template literal an mat dau "\\"', () => {
-    expect(EXAM_PROMPT_TEMPLATE).toContain('\\frac');
+    expect(EXAM_PROMPT_TEMPLATE).toContain('\\dfrac');
+    expect(EXAM_PROMPT_TEMPLATE).toContain('\\sqrt{');
     expect(EXAM_PROMPT_TEMPLATE).toContain('\\sqrt[3]');
     expect(EXAM_PROMPT_EXAMPLE).toContain('\\sqrt{16}');
     expect(EXAM_PROMPT_TEMPLATE).not.toContain('\f'); // form-feed = dau hieu "\f" bi hieu sai

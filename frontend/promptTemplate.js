@@ -58,9 +58,15 @@ Trường Muc_Do — viết đúng MỘT trong 4 giá trị:  Nhan_Biet  |  Thon
   Loi_Giai: <hướng dẫn chấm / đáp án / các bước giải chi tiết>
 
 ━━━━━━━━━━━━━━ CÁCH VIẾT CÔNG THỨC TOÁN ━━━━━━━━━━━━━━
-- Ký hiệu đơn giản: gõ thẳng bằng ASCII — lũy thừa x^2, căn sqrt(16), phân số 3/4, so sánh <= >= != , tương đương <=> , suy ra => , dấu nhân a*b , đơn vị cm2 cm3.
-- Công thức phức tạp hoặc lồng nhau (phân số trong căn, căn bậc n, tích phân, hệ phương trình…): bọc trong dấu $...$ và viết bằng LaTeX chuẩn. Ví dụ: $\\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}$ , $\\sqrt[3]{x+1}$ , $\\int_{0}^{1} x^2\\,dx$ .
+- BẮT BUỘC bọc trong $...$ và viết bằng LaTeX chuẩn cho MỌI công thức có cấu trúc 2 chiều (bên trên/bên dưới một gạch ngang):
+    • Căn mọi loại: $\\sqrt{80}$ , $\\sqrt{b^2 - 4ac}$ , căn bậc n $\\sqrt[3]{x+1}$
+    • Phân số mọi loại: $\\dfrac{2}{3}$ , $\\dfrac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}$
+    • Lũy thừa có cơ số hoặc số mũ là biểu thức: $x^{n+1}$ , $(a+b)^2$ , $(-2)^{3}$ , $2^{10}$
+    • Tích phân / tổng / giới hạn có cận: $\\int_{0}^{1} x^2\\,dx$ , $\\sum_{k=1}^{n} k$ , $\\lim_{x \\to 0} f(x)$
+    • Hệ phương trình, ma trận: $\\begin{cases} x + y = 1 \\\\ x - y = 3 \\end{cases}$
+- CHỈ được gõ ASCII trần (KHÔNG có $...$) cho ký hiệu thật sự MỘT HÀNG: số mũ chỉ một chữ số như x^2 ; dấu nhân a*b ; so sánh <= >= != ; tương đương <=> ; suy ra => ; đơn vị cm2 cm3 ; số thập phân ; dấu cộng trừ viết +- .
 - Không trộn nửa ASCII nửa LaTeX trong cùng một biểu thức. Một biểu thức: hoặc toàn ASCII, hoặc toàn LaTeX trong $...$.
+- Nếu một biểu thức có căn hoặc phân số thì CẢ biểu thức đó phải nằm gọn trong MỘT cặp $...$ (kể cả phần số/biến đứng ngoài căn): viết $2\\sqrt{3} + 1$ chứ KHÔNG viết 2$\\sqrt{3}$+1 ; viết $\\dfrac{\\sqrt{80}}{5}$ chứ KHÔNG viết $\\sqrt{80}$/5 .
 
 ━━━━━━━━━━━━━━ SỐ LƯỢNG CÂU HỎI ━━━━━━━━━━━━━━
 Nếu ở phần bổ sung phía dưới KHÔNG ghi yêu cầu số lượng cụ thể: hãy tạo khoảng 6 câu cho PHAN_1 (đủ cả TN, DUNG_SAI, DIEN_TU) và 2–3 câu TU_LUAN cho PHAN_2, phân bố trải đều 4 mức độ từ Nhan_Biet đến Van_Dung_Cao.
