@@ -1,45 +1,45 @@
 import { TextPromptParser } from '/parser/TextPromptParser.js';
 import { FileUploadParser } from '/parser/FileUploadParser.js';
 import { formatMathSymbols, latexToPlainText } from '/parser/mathFormat.js';
-import { promoteStructuralMath } from '/parser/mathToLatex.js';
-import { segmentFractions } from '/parser/mathFraction.js';
-import { segmentRadicals } from '/parser/mathRadical.js';
 import { generateExamCodes, shuffleAllMCQOptions } from '/parser/examCodeGenerator.js';
 import { EXAM_PROMPT_TEMPLATE, EXAM_PROMPT_EXAMPLE } from './promptTemplate.js';
 
 // Ve noi dung toan hoc: MOI cau truc 2 chieu (can, phan so, can bac n, he
-// phuong trinh...) deu duoc quy ve $...$ / $$...$$ LaTeX roi giao cho KaTeX
-// ve THAT - net gach ngang lien mach, khong "can gia bang CSS". Truoc khi
-// tach, chay promoteStructuralMath() ngay tai cho: noi dung DA LUU thi da
-// qua formatMathSymbols nen buoc nay vo hai (idempotent); noi dung DANG GO
-// o Xem truoc (chua blur/luu) cung duoc ve dep luon thay vi nhap nhay.
-// renderRadicalSegments / renderFractionSegments chi con la FALLBACK cho
-// doan hiem khi KaTeX loi hoac cu phap la la.
+// phuong trinh, tich phan...) deu duoc quy ve $...$ / $$...$$ LaTeX roi giao
+// het cho KaTeX ve. KHONG con renderer "can/phan so gia bang CSS" - phan
+// ngoai $...$ chi con la van xuoi + ky hieu 1 hang Unicode (x², ≤, π, °).
+// formatMathSymbols chay tai cho: quy cau truc 2 chieu (promoteStructuralMath)
+// + lam dep ky hieu 1 hang o vung ngoai $...$; idempotent nen noi dung da
+// luu chay lai vo hai, noi dung dang go cung ve dep ngay.
 const MATH_SPAN_RE = /\$\$[^$]+\$\$|\$[^$]+\$/g;
 
 function renderMathInline(container, text) {
   container.innerHTML = '';
   if (typeof text !== 'string' || !text) return;
-  text = promoteStructuralMath(text);
+  text = formatMathSymbols(text);
 
   let lastIndex = 0;
   let match;
   MATH_SPAN_RE.lastIndex = 0;
   while ((match = MATH_SPAN_RE.exec(text)) !== null) {
-    if (match.index > lastIndex) renderRadicalSegments(container, text.slice(lastIndex, match.index));
+    if (match.index > lastIndex) {
+      container.appendChild(document.createTextNode(text.slice(lastIndex, match.index)));
+    }
     const block = match[0].startsWith('$$');
     renderKatexSpan(container, match[0].slice(block ? 2 : 1, block ? -2 : -1), block);
     lastIndex = MATH_SPAN_RE.lastIndex;
   }
-  renderRadicalSegments(container, text.slice(lastIndex)); // fallback - moi noi dung da luu deu di qua KaTeX
+  if (lastIndex < text.length) {
+    container.appendChild(document.createTextNode(text.slice(lastIndex)));
+  }
 }
 
 // innerHTML o day AN TOAN: noi dung la HTML do CHINH KaTeX sinh ra tu cu
 // phap LaTeX (khong phai chuoi AI/nguoi dung duoc chen thang vao DOM). Voi
-// trust:false (mac dinh, giu nguyen tuong minh o day de tranh vo tinh bi
-// doi sau nay), cac lenh LaTeX co kha nang sinh HTML/URL tuy y (vd \href,
-// \includegraphics) bi KaTeX tu vo hieu hoa - day la co che an toan chinh
-// thuc cua KaTeX cho dung de render LaTeX khong tin cay (public-facing).
+// trust:false + throwOnError:false, KaTeX tu ve node loi (mau do) va vo hieu
+// hoa cac lenh sinh HTML/URL tuy y (\href, \includegraphics) - co che an
+// toan chinh thuc cho render LaTeX khong tin cay (public-facing). Fallback
+// (KaTeX chua tai xong / loi hi huu) = text da lam phang, KHONG dung CSS.
 function renderKatexSpan(container, latex, displayMode = false) {
   const span = document.createElement('span');
   if (window.katex) {
@@ -48,71 +48,12 @@ function renderKatexSpan(container, latex, displayMode = false) {
         throwOnError: false, trust: false, strict: false, displayMode
       });
     } catch (e) {
-      // Fallback: KaTeX loi cu phap -> ve "can gia bang CSS" tren chuoi tho.
-      renderRadicalSegments(span, latexToPlainText(latex));
+      span.textContent = latexToPlainText(latex);
     }
   } else {
-    renderRadicalSegments(span, latexToPlainText(latex));
+    span.textContent = latexToPlainText(latex);
   }
   container.appendChild(span);
-}
-
-const SUPERSCRIPT_TO_DIGIT = { '⁰': '0', '¹': '1', '²': '2', '³': '3', '⁴': '4', '⁵': '5', '⁶': '6', '⁷': '7', '⁸': '8', '⁹': '9' };
-// Moc can duoc ve bang CSS border (xem .radical::before trong style.css)
-// thay vi hien thi truc tiep ky tu Unicode "√"/"∛"/"∜", nen bac can (neu co)
-// phai duoc tach rieng thanh nhan so nho hien qua .radical-index.
-function radicalIndexFor(symbol) {
-  if (symbol === '∛') return '3';
-  if (symbol === '∜') return '4';
-  if (symbol === '√') return null;
-  const digits = symbol.slice(0, -1).split('').map(c => SUPERSCRIPT_TO_DIGIT[c] || '').join('');
-  return digits || null;
-}
-
-// Tach can thuc truoc (lop ngoai cung), phan text con lai (ca ben ngoai lan
-// ben trong moi can) duoc chuyen tiep cho renderFractionSegments. Can thuc
-// long nhau (vd "√((√3+1)²)") duoc xu ly bang cach de quy vao radical-content.
-function renderRadicalSegments(container, text) {
-  segmentRadicals(text).forEach(seg => {
-    if (seg.type === 'text') {
-      renderFractionSegments(container, seg.value);
-      return;
-    }
-    const radical = document.createElement('span');
-    radical.className = 'radical';
-    const index = radicalIndexFor(seg.symbol);
-    if (index) {
-      const indexSpan = document.createElement('span');
-      indexSpan.className = 'radical-index';
-      indexSpan.textContent = index;
-      radical.appendChild(indexSpan);
-    }
-    const content = document.createElement('span');
-    content.className = 'radical-content';
-    renderRadicalSegments(content, seg.content);
-    radical.appendChild(content);
-    container.appendChild(radical);
-  });
-}
-
-function renderFractionSegments(container, text) {
-  segmentFractions(text).forEach(seg => {
-    if (seg.type === 'text') {
-      if (seg.value) container.appendChild(document.createTextNode(seg.value));
-    } else {
-      const frac = document.createElement('span');
-      frac.className = 'frac';
-      const num = document.createElement('span');
-      num.className = 'frac-num';
-      num.textContent = seg.num;
-      const den = document.createElement('span');
-      den.className = 'frac-den';
-      den.textContent = seg.den;
-      frac.appendChild(num);
-      frac.appendChild(den);
-      container.appendChild(frac);
-    }
-  });
 }
 
 const DIFFICULTY_LABEL = { NB: 'Nhận biết', TH: 'Thông hiểu', VD: 'Vận dụng', VDC: 'Vận dụng cao' };
@@ -656,7 +597,7 @@ function renderQuestionCard(q, bi, qi, ctx, displayNo) {
 // rieng cho de doc. Cac cum $...$ duoc che tam de dau "." ben trong cong thuc
 // khong bi coi la het cau; so thap phan "3.14" / dau nhan ngam "α.cos" khong
 // co khoang trang sau nen cung khong bi cat.
-const EXPL_MATH_MASK = /\$[^$]*\$/g;
+const EXPL_MATH_MASK = /\$\$[^$]+\$\$|\$[^$]*\$/g;
 const EXPL_SENTENCE_SPLIT = /(?<=\.)\s+(?=\S)/;
 function renderExplanationInline(container, text) {
   container.innerHTML = '';

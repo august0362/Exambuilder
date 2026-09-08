@@ -39,15 +39,9 @@ function isLikelyProseWord(s) {
   return /^\p{Ll}+$/u.test(s) && s.length >= 3;
 }
 
-const TRIG_TERM = '(?:sin|cos|tan|cot|sec|csc)\\s?[\\p{L}\\p{M}]{1,10}';
-const PAREN_TERM = '\\([^()]{1,40}\\)';
-const PLAIN_TERM = '[\\p{L}\\p{N}\\p{M}°×±√+\\-]{1,20}';
-const TERM = `(?:${PAREN_TERM}|${TRIG_TERM}|${PLAIN_TERM})`;
-const FRACTION_RE = new RegExp(`(${TERM})\\/(${TERM})`, 'gu');
-
-// Export de mathToLatex.js dung lai bo loc nay khi quyet dinh co boc "a/b"
-// thanh $\frac{a}{b}$ hay khong (cung 1 heuristic: chan tu noi tieng Viet,
-// don vi do luong, tu xuoi dai...).
+// Dung boi mathToLatex.js khi quyet dinh co boc "a/b" thanh $\frac{a}{b}$
+// LaTeX hay khong: chan tu noi tieng Viet ("va/hoac"), cap don vi do luong
+// ("km/h"), tu xuoi thuong dai (khong phai ten bien hinh hoc).
 export function isLikelyFraction(rawNum, rawDen) {
   const num = rawNum.trim();
   const den = rawDen.trim();
@@ -56,30 +50,4 @@ export function isLikelyFraction(rawNum, rawDen) {
   if (isLikelyProseWord(num) || isLikelyProseWord(den)) return false;
   if (isUnitPair(num, den)) return false;
   return true;
-}
-
-/**
- * Tach mot chuoi thanh mang cac doan { type: 'text', value } (van ban
- * thuong) hoac { type: 'frac', num, den } (phan so) de phia hien thi ve
- * (script.js) dung lam co so ve phan so xep chong that (tu tren/mau duoi)
- * thay vi chi hien "a/b" nam ngang. Khong sua doi chuoi goc - chi phuc vu
- * hien thi, du lieu luu tru van la text thuong "a/b".
- */
-export function segmentFractions(text) {
-  if (typeof text !== 'string' || !text) return [{ type: 'text', value: text || '' }];
-
-  const segments = [];
-  let lastIndex = 0;
-  FRACTION_RE.lastIndex = 0;
-  let match;
-  while ((match = FRACTION_RE.exec(text)) !== null) {
-    const [full, num, den] = match;
-    if (!isLikelyFraction(num, den)) continue;
-    if (match.index > lastIndex) segments.push({ type: 'text', value: text.slice(lastIndex, match.index) });
-    segments.push({ type: 'frac', num: num.trim(), den: den.trim() });
-    lastIndex = match.index + full.length;
-  }
-  if (lastIndex < text.length) segments.push({ type: 'text', value: text.slice(lastIndex) });
-  if (segments.length === 0) segments.push({ type: 'text', value: text });
-  return segments;
 }

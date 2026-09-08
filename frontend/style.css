@@ -856,76 +856,10 @@ textarea { resize: vertical; }
 
 .true-false-answer-print { display: none; }
 
-/* Phan so xep chong (tu tren, mau duoi, co gach ngang o giua) - dung form
-   chuan toan hoc thay vi "a/b" nam ngang. Khong co CSS nay thi 2 span
-   .frac-num/.frac-den hien inline lien nhau, doc nham thanh 1 chuoi dinh
-   lien (vi du "AC/BC" bi hien thanh "ACBC"). */
-.frac {
-  display: inline-flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  vertical-align: middle;
-  margin: 0 0.15em;
-  font-size: 0.9em;
-  line-height: 1.15;
-  text-align: center;
-}
-.frac-num,
-.frac-den {
-  display: block;
-  padding: 0 0.25em;
-  white-space: nowrap;
-}
-.frac-num { border-bottom: 1px solid currentColor; }
-
-/* Can thuc (moc can noi lien net gach ngang keo dai tren toan hang) - dung
-   form chuan toan hoc thay vi ky tu Unicode "√" roi ngoac don "(...)" khong
-   co net gach ngang (de doc nham la "can(...)" thay vi mot khoi duoi dau
-   can). Moc can duoc ve bang border (::before) thay vi dung ky tu Unicode
-   "√" - ve bang border dam bao moc can va net gach ngang luon dinh lien
-   nhau (cung mot he toa do), khac voi cach keo dai (scale) ky tu font von
-   phu thuoc kich thuoc glyph cua tung font/trinh duyet nen de bi ho. */
-.radical {
-  display: inline-flex;
-  align-items: stretch;
-  position: relative;
-  vertical-align: middle;
-  margin: 0 0.1em;
-}
-/* Moc can la 1 flex item BINH THUONG (khong dung position:absolute) de
-   align-items:stretch tu keo dai no khop chinh xac chieu cao dong hien tai -
-   truoc day dung height co dinh (vd 1.52em) nen o nhung cho line-height
-   khac (option TN, chu thich...) moc can bi lech ty le, luc thi ho, luc thi
-   trong "qua to" so voi chu xung quanh. skewX() nghieng canh trai cua o
-   theo DUNG chieu cao thuc te cua no, khong can biet truoc con so pixel. */
-.radical::before {
-  content: '';
-  display: inline-block;
-  width: 0;
-  /* border, khong dung background: trinh duyet mac dinh KHONG in mau nen
-     khi in/xuat PDF (phai bat rieng "In hinh nen"), lam mat het net xien
-     nhung van con net gach ngang (vi border-top cua .radical-content luon
-     duoc in). border thi luon duoc in binh thuong, khong bi anh huong. */
-  border-left: 0.09em solid currentColor;
-  transform: skewX(-22deg);
-  transform-origin: 0% 100%;
-  margin-right: 0.3em;
-}
-/* Chu so bac can (can bac 3, 4, 5...) - dat nho o goc tren trai moc can,
-   giong quy uoc danh chu so cua can bac n trong sach giao khoa. */
-.radical-index {
-  position: absolute;
-  left: 0.02em;
-  top: -0.05em;
-  font-size: 0.6em;
-  line-height: 1;
-}
-.radical-content {
-  display: inline-block;
-  border-top: 0.09em solid currentColor;
-  padding: 0.05em 0.15em 0 0.05em;
-}
+/* Cong thuc toan render bang KaTeX (xem renderMathInline trong script.js).
+   Cac renderer "can/phan so gia bang CSS" (.radical / .frac) da bo hoan
+   toan - moi cau truc 2 chieu deu di qua $...$ + KaTeX. */
+.katex-display { margin: 0.4em 0; overflow-x: auto; overflow-y: hidden; }
 
 /* ---------- Multi-code panel (Task 3) ---------- */
 .multi-code-panel {
