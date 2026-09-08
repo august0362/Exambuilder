@@ -8,7 +8,7 @@
 // Ham chinh: promoteStructuralMath(text) - IDEMPOTENT (chay lai khong doi
 // them), coi moi cum $...$ / $$...$$ co san la khoi kin (khong dung vao).
 //
-// Ban port Kotlin: "Exam builder for adr/app/.../math/MathConvert.kt"
+// Ban port Kotlin: "Exam builder for adr/app/.../math/MathPromote.kt"
 // (MathConvert.promoteStructuralMath) - giu 2 ben dong bo tung buoc.
 
 import { findMatchingParen } from './mathRadical.js';
@@ -99,8 +99,16 @@ function liftSuperscripts(s) {
   return s;
 }
 
-function bareToLatex(expr) {
-  let s = unwrap(expr);
+function bareToLatex(expr, keepOuterParens = false) {
+  let s = String(expr).trim();
+  const dollar = /^\$([\s\S]*)\$$/.exec(s);
+  if (dollar) s = dollar[1].trim();
+  // Ngoac don giao vien go quanh 1 ve phan so ("(2*√3)/(...)") mang y nghia
+  // gom nhom -> giu nguyen trong LaTeX. Chi bo ngoac khi KHONG phai ve phan
+  // so (keepOuterParens=false) va ngoac boc tron ca bieu thuc.
+  if (!keepOuterParens && s.startsWith('(') && findMatchingParen(s, 0) === s.length - 1) {
+    s = s.slice(1, -1).trim();
+  }
   if (!s) return '';
   // Ket qua LUON di vao trong 1 cum $...$ -> moi dau $ con sot lai (delimiter
   // cua cac cum con da duoc gop) phai bi bo, neu khong se sinh ra "$$" hong.
@@ -244,6 +252,20 @@ function absorbHuggingParens(s) {
 // Buoc 6: phan so bac ngang qua cac cum $...$ ("$\sqrt{80}$ / $\sqrt{5}$"
 // -> "$\frac{\sqrt{80}}{\sqrt{5}}$"; "2 / $\sqrt{3}$" -> "$\frac{2}{\sqrt{3}}$").
 const FRAC_TERM = String.raw`\$[^$]+\$|\([^()]*\)|[0-9A-Za-z][0-9A-Za-z.]*|[⁰¹²³⁴⁵⁶⁷⁸⁹]+`;
+// Mot ve co "cau truc toan" (da co $...$, \sqrt, \frac hoac ky tu can) thi
+// chac chan la toan hoc -> bat phan so. Neu KHONG co cau truc, chi bat khi
+// CA hai ve deu "gon" (khong khoang trang ben trong) - tranh nuot bat dang
+// thuc go tay "(2x - 1)/3 - (x - 2)/2 >= (x + 1)/6" thanh phan so xep chong.
+const STRUCTURAL_RE = /[$√∛∜]|\\sqrt|\\[dt]?frac/;
+// "Cau 12/5", "Bai 3/4 trang 10", "Hinh 2/3", "ngay 12/5"... = so tham chieu
+// / ngay thang, KHONG phai phan so. Chan khi ngay TRUOC cum "a/b" co tu dan
+// (so sanh khong dau de bat "Câu"/"Bài"/"Hình").
+const REF_WORD_RE = /(?:cau|bai|trang|hinh|sgk|sbt|ngay)\s*$/;
+function precededByReferenceWord(s, idx) {
+  const ctx = s.slice(Math.max(0, idx - 16), idx)
+    .normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
+  return REF_WORD_RE.test(ctx);
+}
 function mergeFractions(s) {
   // Bien "chu cai" o 2 dau (ke ca chu co dau tieng Viet) chan viec cat 1 tu
   // xuoi lam ve phan so (vd "phương án" -> "ph" / "..." ).
@@ -251,19 +273,24 @@ function mergeFractions(s) {
     `(?<![\\p{L}\\p{M}])(${FRAC_TERM})(\\s{0,2})\\/(\\s{0,2})(${FRAC_TERM})(?![\\p{L}\\p{M}])`,
     'gu'
   );
+  const innerOf = t => t.replace(/^\$([\s\S]*)\$$/, '$1');
+  const tight = t => !/\s/.test(innerOf(t));
+  const hasStruct = t => STRUCTURAL_RE.test(t);
   let out = '';
   let last = 0;
   let m;
   while ((m = re.exec(s)) !== null) {
-    const [full, num, ws1, ws2, den] = m;
-    const spaced = (ws1 + ws2).length > 0;
-    const strong = /^[$(]/.test(num) || /^[$(]/.test(den);
-    const ok = isLikelyFraction(plainOf(num), plainOf(den)) && (!spaced || strong);
-    if (!ok) {
+    const [full, num, , , den] = m;
+    const eligible =
+      isLikelyFraction(plainOf(num), plainOf(den)) &&
+      !precededByReferenceWord(s, m.index) &&
+      (hasStruct(num) || hasStruct(den) || (tight(num) && tight(den)));
+    if (!eligible) {
       re.lastIndex = m.index + num.length + 1;
       continue;
     }
-    out += s.slice(last, m.index) + `$\\frac{${bareToLatex(num)}}{${bareToLatex(den)}}$`;
+    out += s.slice(last, m.index) +
+      `$\\frac{${bareToLatex(num, true)}}{${bareToLatex(den, true)}}$`;
     last = m.index + full.length;
     re.lastIndex = last;
   }
@@ -288,22 +315,97 @@ function mergeAdjacentSpans(s) {
   return s;
 }
 
+// Buoc 8: nuot toan hang tran ("= 4", "+ 2", "- 3") dung NGAY sau mot cum
+// $...$ vao trong cum do -> KaTeX ve ca ve "= 4" lien mach 1 duong nen.
+// Chi nuot SO (co the am / thap phan) hoac cum ngoac toan-hoc-thuan; gap
+// chu cai (van xuoi tieng Viet) hoac dau cau thi DUNG.
+const TRAILING_OPERAND = String.raw`-?\d+(?:[.,]\d+)?|\([-+\d\s*/×÷·.]+\)`;
+function absorbTrailingOperand(s) {
+  const re = new RegExp(
+    `\\$([^$]+)\\$([ \\t]*[-+=*×÷·][ \\t]*)(${TRAILING_OPERAND})(?![\\w²³⁰¹⁴⁵⁶⁷⁸⁹])`,
+    'g'
+  );
+  let prev = null;
+  while (prev !== s) {
+    prev = s;
+    s = s.replace(re, (_, body, op, operand) => `$${body.trim()} ${op.trim()} ${operand.trim()}$`);
+  }
+  return s;
+}
+
+// Buoc 0: \begin{env}...\end{env} (cases, matrix, aligned...) dung tran ngoai
+// $...$ -> boc thanh $$...$$ (block) de KaTeX/JLaTeXMath ve. Ton trong vung
+// $...$ / $$...$$ da co (splitProtected coi la khoi kin).
+const BLOCK_ENVS = new Set([
+  'cases', 'matrix', 'pmatrix', 'bmatrix', 'Bmatrix', 'vmatrix', 'Vmatrix',
+  'array', 'aligned', 'align', 'align*', 'alignedat', 'gathered', 'gather',
+  'gather*', 'split', 'equation', 'equation*'
+]);
+const BEGIN_ENV_RE = /\\begin\{([A-Za-z]+\*?)\}/g;
+function wrapBlockEnvironments(text) {
+  return splitProtected(text).map(p => {
+    if (p.math) return p.value;
+    const s = p.value;
+    let out = '';
+    let cursor = 0;
+    BEGIN_ENV_RE.lastIndex = 0;
+    let m;
+    while ((m = BEGIN_ENV_RE.exec(s)) !== null) {
+      if (m.index < cursor) continue;
+      if (!BLOCK_ENVS.has(m[1])) continue;
+      const endTag = `\\end{${m[1]}}`;
+      const endIdx = s.indexOf(endTag, m.index + m[0].length);
+      if (endIdx < 0) continue;
+      const stop = endIdx + endTag.length;
+      out += s.slice(cursor, m.index) + `$$${s.slice(m.index, stop)}$$`;
+      cursor = stop;
+      BEGIN_ENV_RE.lastIndex = stop;
+    }
+    return out + s.slice(cursor);
+  }).join('');
+}
+
+// Chay 1 buoc merge/absorb CHI tren phan van ban NGOAI cac block $$...$$
+// (tranh regex phan so cat "a/b" nam trong \begin{cases}...\end{cases}).
+function outsideBlocks(s, fn) {
+  return s.split(/(\$\$[^$]*\$\$)/).map((seg, i) => (i % 2 === 0 ? fn(seg) : seg)).join('');
+}
+
 function onePass(text) {
-  const promoted = splitProtected(text)
+  let s = wrapBlockEnvironments(text);
+  s = splitProtected(s)
     .map(p => {
       if (p.math) return p.value;
-      let s = p.value;
-      s = wrapLatexCommands(s);
-      s = wrapSqrtCalls(s);
-      s = wrapUnicodeRadicals(s);
-      return s;
+      let seg = p.value;
+      seg = wrapLatexCommands(seg);
+      seg = wrapSqrtCalls(seg);
+      seg = wrapUnicodeRadicals(seg);
+      return seg;
     })
     .join('');
-  let s = absorbLeadingCoefficient(promoted);
-  s = absorbHuggingParens(s);
-  s = mergeFractions(s);
-  s = mergeAdjacentSpans(s);
+  s = outsideBlocks(s, absorbLeadingCoefficient);
+  s = outsideBlocks(s, absorbHuggingParens);
+  s = outsideBlocks(s, mergeFractions);
+  s = outsideBlocks(s, mergeAdjacentSpans);
+  s = outsideBlocks(s, absorbTrailingOperand);
   return s;
+}
+
+// Hard rule 8: dau "$" LE (khong ghep thanh cap $...$) khong duoc lam hong
+// buoc sau. Ghep cap tham lam tu trai; "$" con du -> tam thay bang sentinel
+// (PUA, khong khop \p{L}/[0-9A-Za-z]/toan tu) roi tra lai o cuoi.
+const LONE_DOLLAR_SENTINEL = String.fromCharCode(0xF8FF);
+const dollarCount = s => (s.match(/\$/g) || []).length;
+function guardLoneDollars(text) {
+  if (dollarCount(text) % 2 === 0) return { text, restore: s => s };
+  // "$" dinh sat chu so (tien te "5$" / "$5") gan nhu chac chan la dau LE.
+  let out = text.replace(/(?<=\d)\$|\$(?=\d)/g, LONE_DOLLAR_SENTINEL);
+  if (dollarCount(out) % 2 === 1) {
+    // Van le -> sentinel dau "$" CUOI cung (ghep cap tham lam tu trai).
+    const last = out.lastIndexOf('$');
+    out = out.slice(0, last) + LONE_DOLLAR_SENTINEL + out.slice(last + 1);
+  }
+  return { text: out, restore: s => s.split(LONE_DOLLAR_SENTINEL).join('$') };
 }
 
 /**
@@ -311,11 +413,12 @@ function onePass(text) {
  */
 export function promoteStructuralMath(text) {
   if (typeof text !== 'string' || !text) return text;
-  let result = text;
+  const guarded = guardLoneDollars(text);
+  let result = guarded.text;
   for (let i = 0; i < 6; i++) {
     const next = onePass(result);
-    if (next === result) return next;
+    if (next === result) break;
     result = next;
   }
-  return result;
+  return guarded.restore(result);
 }

@@ -9,7 +9,8 @@ const { promoteStructuralMath } = require('../../backend/parser/mathToLatex.js')
 describe('promoteStructuralMath', () => {
   test('TC-ML-01: \\sqrt{...} tho (loi AI hay gap) chi duoc them dau $, khong bien doi', () => {
     expect(promoteStructuralMath('\\sqrt{80}')).toBe('$\\sqrt{80}$');
-    expect(promoteStructuralMath('Ket qua \\sqrt{16} = 4')).toBe('Ket qua $\\sqrt{16}$ = 4');
+    // [Da sua] "= 4" (toan hang so tran) duoc nuot vao cum de KaTeX ve lien mach.
+    expect(promoteStructuralMath('Ket qua \\sqrt{16} = 4')).toBe('Ket qua $\\sqrt{16} = 4$');
   });
 
   test('TC-ML-02: \\sqrt[n]{...} va \\frac{...}{...} tho -> $...$', () => {
@@ -19,7 +20,8 @@ describe('promoteStructuralMath', () => {
   });
 
   test('TC-ML-03: sqrt(...) ASCII -> $\\sqrt{...}$', () => {
-    expect(promoteStructuralMath('sqrt(16) = 4')).toBe('$\\sqrt{16}$ = 4');
+    // [Da sua] "= 4" tran duoc nuot vao cum (dong bo voi TC-ML-12).
+    expect(promoteStructuralMath('sqrt(16) = 4')).toBe('$\\sqrt{16} = 4$');
     expect(promoteStructuralMath('sqrt(x + 1)')).toBe('$\\sqrt{x + 1}$');
   });
 

@@ -34,9 +34,9 @@ describe('formatMathSymbols', () => {
     expect(formatMathSymbols('10 cm3')).toBe('10 cm³');
   });
 
-  test('TC-MF-05: doi sqrt(...) sang can bac hai Unicode', () => {
-    expect(formatMathSymbols('sqrt(16) = 4')).toBe('√(16) = 4');
-    expect(formatMathSymbols('SQRT(x)')).toBe('√(x)');
+  test('TC-MF-05 [Da sua - chuyen sang $...$ LaTeX]: sqrt(...) go tay -> $\\sqrt{...}$ (KaTeX ve that)', () => {
+    expect(formatMathSymbols('sqrt(16) = 4')).toBe('$\\sqrt{16} = 4$');
+    expect(formatMathSymbols('SQRT(x)')).toBe('$\\sqrt{x}$');
   });
 
   test('TC-MF-06: doi dau nhan * giua 2 so hang thanh ×, giu nguyen phan so a/b', () => {
@@ -73,14 +73,15 @@ describe('formatMathSymbols', () => {
     expect(latexToPlainText('$\\sin \\alpha$')).toBe('sin α');
   });
 
-  test('TC-MF-12: doi \\frac{tu}{mau} sang dang a/b, tu dong bo ngoac khi co +/-', () => {
-    expect(formatMathSymbols('\\frac{AC}{BC}')).toBe('AC/BC');
-    expect(formatMathSymbols('\\frac{x+1}{2}')).toBe('(x+1)/2');
-    expect(formatMathSymbols('\\frac{\\sqrt{3}}{2}')).toBe('√3/2');
+  test('TC-MF-12 [Da sua - chuyen sang $...$ LaTeX]: \\frac{tu}{mau} tho -> $\\frac{...}{...}$', () => {
+    expect(formatMathSymbols('\\frac{AC}{BC}')).toBe('$\\frac{AC}{BC}$');
+    expect(formatMathSymbols('\\frac{x+1}{2}')).toBe('$\\frac{x+1}{2}$');
+    expect(formatMathSymbols('\\frac{\\sqrt{3}}{2}')).toBe('$\\frac{\\sqrt{3}}{2}$');
   });
 
-  test('TC-MF-13: doi \\sin \\cos \\tan \\cot ... (bo dau \\, giu ten ham)', () => {
-    expect(formatMathSymbols('\\tan \\alpha = \\frac{\\sin \\alpha}{\\cos \\alpha}')).toBe('tan α = sin α/cos α');
+  test('TC-MF-13 [Da sua - chuyen sang $...$ LaTeX]: \\tan \\alpha (1 hang) -> Unicode; \\frac (2 chieu) -> $...$', () => {
+    expect(formatMathSymbols('\\tan \\alpha = \\frac{\\sin \\alpha}{\\cos \\alpha}'))
+      .toBe('tan α = $\\frac{\\sin \\alpha}{\\cos \\alpha}$');
   });
 
   test('TC-MF-14: doi chu cai Hy Lap \\alpha, \\beta sang Unicode', () => {
@@ -96,27 +97,25 @@ describe('formatMathSymbols', () => {
     expect(formatMathSymbols('\\widehat{B} = \\alpha')).toBe('B̂ = α');
   });
 
-  test('TC-MF-17: doi \\sqrt{...} sang can bac hai Unicode - so nguyen thi khong ngoac', () => {
-    expect(formatMathSymbols('\\sqrt{16} = 4')).toBe('√16 = 4');
-    expect(formatMathSymbols('\\sqrt{37}')).toBe('√37');
+  test('TC-MF-17 [Da sua - chuyen sang $...$ LaTeX]: \\sqrt{...} tho -> $\\sqrt{...}$ (nuot ca "= 4")', () => {
+    expect(formatMathSymbols('\\sqrt{16} = 4')).toBe('$\\sqrt{16} = 4$');
+    expect(formatMathSymbols('\\sqrt{37}')).toBe('$\\sqrt{37}$');
   });
 
-  test('TC-MF-21 [Da sua]: \\sqrt{...} KHONG con dung dau combining overline (U+0305) dinh vao chu so', () => {
+  test('TC-MF-21 [Da sua - chuyen sang $...$ LaTeX]: \\sqrt{...} -> $...$ cho KaTeX ve vinculum that (khong dung ky tu ghep)', () => {
     const result = formatMathSymbols('\\sqrt{37}');
-    expect(result).toBe('√37');
+    expect(result).toBe('$\\sqrt{37}$');
     expect(result).not.toMatch(/̅/);
   });
 
-  test('TC-MF-22: \\sqrt{...} voi bieu thuc (khong phai so nguyen thuan) thi boc trong ngoac don', () => {
-    expect(formatMathSymbols('\\sqrt{x+1}')).toBe('√(x+1)');
-    expect(formatMathSymbols('\\sqrt{2x}')).toBe('√(2x)');
+  test('TC-MF-22 [Da sua - chuyen sang $...$ LaTeX]: \\sqrt{bieu thuc} tho -> $\\sqrt{...}$', () => {
+    expect(formatMathSymbols('\\sqrt{x+1}')).toBe('$\\sqrt{x+1}$');
+    expect(formatMathSymbols('\\sqrt{2x}')).toBe('$\\sqrt{2x}$');
   });
 
-  test('TC-MF-23: can bac hai long nhau (\\sqrt trong \\sqrt) duoc giai het, khong con sot \\sqrt{ } tho', () => {
+  test('TC-MF-23 [Da sua - chuyen sang $...$ LaTeX]: can long nhau giu nguyen LaTeX trong $...$ cho KaTeX', () => {
     const result = formatMathSymbols('AC = \\sqrt{(2\\sqrt{3})^2 + 5^2} = \\sqrt{37}');
-    expect(result).not.toMatch(/\\sqrt/);
-    expect(result).not.toMatch(/[{}]/);
-    expect(result).toBe('AC = √((2√3)² + 5²) = √37');
+    expect(result).toBe('AC = $\\sqrt{(2\\sqrt{3})^2 + 5^2} = \\sqrt{37}$');
   });
 
   test('TC-MF-24: chen dau "." khi 2 ky hieu LaTeX dinh lien nhau do bo dau \\ (nhan ngam Hy Lap-ham luong giac)', () => {
@@ -152,15 +151,15 @@ describe('formatMathSymbols', () => {
     expect(latexToPlainText('$18\\text{ cm}^2$')).toBe('18 cm²');
   });
 
-  test('TC-MF-26: doi \\sqrt[3]{...} sang can bac ba Unicode (∛), \\sqrt[4]{...} sang ∜', () => {
-    expect(formatMathSymbols('\\sqrt[3]{27} = 3')).toBe('∛27 = 3');
-    expect(formatMathSymbols('\\sqrt[3]{-8} = -2')).toBe('∛(-8) = -2');
-    expect(formatMathSymbols('\\sqrt[3]{a}')).toBe('∛(a)');
-    expect(formatMathSymbols('\\sqrt[4]{16} = 2')).toBe('∜16 = 2');
+  test('TC-MF-26 [Da sua - chuyen sang $...$ LaTeX]: \\sqrt[n]{...} tho -> $\\sqrt[n]{...}$', () => {
+    expect(formatMathSymbols('\\sqrt[3]{27} = 3')).toBe('$\\sqrt[3]{27} = 3$');
+    expect(formatMathSymbols('\\sqrt[3]{-8} = -2')).toBe('$\\sqrt[3]{-8} = -2$');
+    expect(formatMathSymbols('\\sqrt[3]{a}')).toBe('$\\sqrt[3]{a}$');
+    expect(formatMathSymbols('\\sqrt[4]{16} = 2')).toBe('$\\sqrt[4]{16} = 2$');
   });
 
-  test('TC-MF-27: \\sqrt[n]{...} voi bac lon hon 4 dung chu so tren ghep truoc dau can', () => {
-    expect(formatMathSymbols('\\sqrt[5]{32} = 2')).toBe('⁵√32 = 2');
+  test('TC-MF-27 [Da sua - chuyen sang $...$ LaTeX]: \\sqrt[5]{...} tho -> $\\sqrt[5]{...}$', () => {
+    expect(formatMathSymbols('\\sqrt[5]{32} = 2')).toBe('$\\sqrt[5]{32} = 2$');
   });
 
   test('TC-MF-28 [Da sua - chuyen sang KaTeX]: (\\sqrt[3]{...})^3 = a giu nguyen $...$ de KaTeX ve, chi doi phan van ban tieng Viet ben ngoai', () => {
@@ -210,8 +209,33 @@ describe('formatMathSymbols', () => {
     expect(formatMathSymbols('Giá 5$ vẫn còn đó')).toBe('Giá 5 vẫn còn đó');
   });
 
-  test('TC-MF-34: nhieu cum $...$ xen ke van ban thuong - cum $...$ giu nguyen, van ban ASCII ben ngoai (vd sqrt(16) go tay khong dung LaTeX) van duoc doi Unicode nhu truoc', () => {
+  test('TC-MF-34 [Da sua - chuyen sang $...$ LaTeX]: cum $...$ co san giu nguyen; sqrt(16) go tay -> $\\sqrt{16} = 4$', () => {
     const raw = 'Cho $a \\ge 0$, ta có $\\sqrt{a}$, và sqrt(16) = 4.';
-    expect(formatMathSymbols(raw)).toBe('Cho $a \\ge 0$, ta có $\\sqrt{a}$, và √(16) = 4.');
+    expect(formatMathSymbols(raw)).toBe('Cho $a \\ge 0$, ta có $\\sqrt{a}$, và $\\sqrt{16} = 4$.');
+  });
+
+  // --- TASK C: chot chan du lieu hong (khong bao gio lam phang \sqrt/\frac/\begin ngoai $...$) ---
+
+  test('TC-MF-35 [khoa]: \\sqrt{80} va \\frac{1}{2} tho ngoai $...$ -> boc $...$, KHONG lam phang', () => {
+    const result = formatMathSymbols('Cho \\sqrt{80} va \\frac{1}{2} ngoai dola');
+    expect(result).toBe('Cho $\\sqrt{80}$ va $\\frac{1}{2}$ ngoai dola');
+    expect(result).not.toMatch(/√80|(?<!\{)1\/2/);
+  });
+
+  test('TC-MF-36 [khoa]: \\begin{cases}...\\end{cases} tran -> $$...$$ (block)', () => {
+    const raw = '\\begin{cases} x + y = 1 \\\\ x - y = 3 \\end{cases}';
+    expect(formatMathSymbols(raw)).toBe('$$' + raw + '$$');
+  });
+
+  test('TC-MF-37 [khoa]: bao toan tieng Viet - khong keo chu vao $...$, khong nham phan so', () => {
+    expect(formatMathSymbols('phương án B')).toBe('phương án B');
+    expect(formatMathSymbols('vận tốc 15 km/h')).toBe('vận tốc 15 km/h');
+    expect(formatMathSymbols('đúng và/hoặc gần đúng')).toBe('đúng và/hoặc gần đúng');
+    expect(formatMathSymbols('Làm Câu 12/5 SGK trang 40')).toBe('Làm Câu 12/5 SGK trang 40');
+  });
+
+  test('TC-MF-38 [khoa]: bat dang thuc nhieu phan so go tay (co khoang trang) GIU nguyen ASCII', () => {
+    expect(formatMathSymbols('(2x - 1)/3 - (x - 2)/2 >= (x + 1)/6'))
+      .toBe('(2x - 1)/3 - (x - 2)/2 ≥ (x + 1)/6');
   });
 });

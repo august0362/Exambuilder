@@ -1,34 +1,37 @@
 import { TextPromptParser } from '/parser/TextPromptParser.js';
 import { FileUploadParser } from '/parser/FileUploadParser.js';
 import { formatMathSymbols, latexToPlainText } from '/parser/mathFormat.js';
+import { promoteStructuralMath } from '/parser/mathToLatex.js';
 import { segmentFractions } from '/parser/mathFraction.js';
 import { segmentRadicals } from '/parser/mathRadical.js';
 import { generateExamCodes, shuffleAllMCQOptions } from '/parser/examCodeGenerator.js';
 import { EXAM_PROMPT_TEMPLATE, EXAM_PROMPT_EXAMPLE } from './promptTemplate.js';
 
-// Ve noi dung toan hoc: cum $...$ (LaTeX that, do AI sinh ra) duoc ve bang
-// KaTeX - xu ly dung moi kieu long nhau tuy y (can trong phan so, phan so
-// trong can...) ma cach "doan mau bang regex" truoc day khong lam duoc (2
-// buoc tach can/tach phan so giam chan nhau tren cung 1 chuoi da "lam
-// phang", gay ghep sai khi can dung canh dau "/"). Phan van ban NGOAI $...$
-// (vd giao vien go tay "sqrt(16)", "3/4" khong dung LaTeX) van dung
-// renderRadicalSegments/renderFractionSegments nhu truoc. Chi dung cho hien
-// thi - du lieu goc trong state van la text thuong (xem formatMathSymbols).
-const MATH_SPAN_RE = /\$[^$]*\$/g;
+// Ve noi dung toan hoc: MOI cau truc 2 chieu (can, phan so, can bac n, he
+// phuong trinh...) deu duoc quy ve $...$ / $$...$$ LaTeX roi giao cho KaTeX
+// ve THAT - net gach ngang lien mach, khong "can gia bang CSS". Truoc khi
+// tach, chay promoteStructuralMath() ngay tai cho: noi dung DA LUU thi da
+// qua formatMathSymbols nen buoc nay vo hai (idempotent); noi dung DANG GO
+// o Xem truoc (chua blur/luu) cung duoc ve dep luon thay vi nhap nhay.
+// renderRadicalSegments / renderFractionSegments chi con la FALLBACK cho
+// doan hiem khi KaTeX loi hoac cu phap la la.
+const MATH_SPAN_RE = /\$\$[^$]+\$\$|\$[^$]+\$/g;
 
 function renderMathInline(container, text) {
   container.innerHTML = '';
   if (typeof text !== 'string' || !text) return;
+  text = promoteStructuralMath(text);
 
   let lastIndex = 0;
   let match;
   MATH_SPAN_RE.lastIndex = 0;
   while ((match = MATH_SPAN_RE.exec(text)) !== null) {
     if (match.index > lastIndex) renderRadicalSegments(container, text.slice(lastIndex, match.index));
-    renderKatexSpan(container, match[0].slice(1, -1));
+    const block = match[0].startsWith('$$');
+    renderKatexSpan(container, match[0].slice(block ? 2 : 1, block ? -2 : -1), block);
     lastIndex = MATH_SPAN_RE.lastIndex;
   }
-  renderRadicalSegments(container, text.slice(lastIndex));
+  renderRadicalSegments(container, text.slice(lastIndex)); // fallback - moi noi dung da luu deu di qua KaTeX
 }
 
 // innerHTML o day AN TOAN: noi dung la HTML do CHINH KaTeX sinh ra tu cu
@@ -37,16 +40,19 @@ function renderMathInline(container, text) {
 // doi sau nay), cac lenh LaTeX co kha nang sinh HTML/URL tuy y (vd \href,
 // \includegraphics) bi KaTeX tu vo hieu hoa - day la co che an toan chinh
 // thuc cua KaTeX cho dung de render LaTeX khong tin cay (public-facing).
-function renderKatexSpan(container, latex) {
+function renderKatexSpan(container, latex, displayMode = false) {
   const span = document.createElement('span');
   if (window.katex) {
     try {
-      span.innerHTML = window.katex.renderToString(latex, { throwOnError: false, trust: false, strict: false });
+      span.innerHTML = window.katex.renderToString(latex, {
+        throwOnError: false, trust: false, strict: false, displayMode
+      });
     } catch (e) {
-      span.textContent = `$${latex}$`;
+      // Fallback: KaTeX loi cu phap -> ve "can gia bang CSS" tren chuoi tho.
+      renderRadicalSegments(span, latexToPlainText(latex));
     }
   } else {
-    span.textContent = `$${latex}$`;
+    renderRadicalSegments(span, latexToPlainText(latex));
   }
   container.appendChild(span);
 }
