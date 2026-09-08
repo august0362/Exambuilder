@@ -1,9 +1,12 @@
-const { formatMathSymbols } = require('../../backend/parser/mathFormat.js');
+const { formatMathSymbols, latexToPlainText } = require('../../backend/parser/mathFormat.js');
 
 /**
  * formatMathSymbols doi cac ky hieu toan hoc go tay bang ASCII (>=, <=>,
- * ^2, sqrt(...), m3...) sang ky tu Unicode toan hoc tuong ung, de noi dung
- * de thi hien thi dung chuan thay vi ky hieu lap trinh.
+ * ^2, sqrt(...), m3...) NAM NGOAI dau $...$ sang Unicode; phan LaTeX BEN
+ * TRONG $...$ duoc GIU NGUYEN VEN (ke ca dau $) de tang hien thi dung KaTeX
+ * ve that thay vi tu "lam phang" bang regex (xem renderMathInline trong
+ * script.js). latexToPlainText() la ham lam phang toan bo (ke ca $...$)
+ * dung cho noi dung khong the render KaTeX (vd xuat file Word).
  */
 describe('formatMathSymbols', () => {
   test('TC-MF-01: doi cac ky hieu so sanh/suy ra ASCII sang Unicode', () => {
@@ -62,8 +65,12 @@ describe('formatMathSymbols', () => {
     expect(once).toBe('1/(1 + a²) + 1/(1 + b²) ≥ 2/(1 + ab).');
   });
 
-  test('TC-MF-11: bo dau $ bao quanh cong thuc LaTeX', () => {
-    expect(formatMathSymbols('$\\sin \\alpha$')).toBe('sin α');
+  test('TC-MF-11 [Da sua - chuyen sang KaTeX]: giu nguyen ven ca dau $ cua cong thuc LaTeX de KaTeX ve o tang hien thi', () => {
+    expect(formatMathSymbols('$\\sin \\alpha$')).toBe('$\\sin \\alpha$');
+  });
+
+  test('TC-MF-11b: latexToPlainText van bo dau $ va doi LaTeX sang Unicode nhu truoc (dung cho xuat Word)', () => {
+    expect(latexToPlainText('$\\sin \\alpha$')).toBe('sin α');
   });
 
   test('TC-MF-12: doi \\frac{tu}{mau} sang dang a/b, tu dong bo ngoac khi co +/-', () => {
@@ -127,12 +134,84 @@ describe('formatMathSymbols', () => {
     expect(formatMathSymbols('AB = 3\\text{ cm}')).toBe('AB = 3 cm');
   });
 
-  test('TC-MF-19: cau hoi trac nghiem LaTeX day du (nhu AI sinh ra) duoc lam sach hoan toan', () => {
+  test('TC-MF-19 [Da sua - chuyen sang KaTeX]: cau hoi trac nghiem LaTeX day du (nhu AI sinh ra) chi doi phan van ban tieng Viet, giu nguyen tung cum $...$', () => {
     const raw = 'Cho tam giác $ABC$ vuông tại $A$ có góc nhọn $\\widehat{B} = \\alpha$. $\\sin \\alpha = \\frac{AC}{BC}$';
-    expect(formatMathSymbols(raw)).toBe('Cho tam giác ABC vuông tại A có góc nhọn B̂ = α. sin α = AC/BC');
+    expect(formatMathSymbols(raw)).toBe(raw);
   });
 
-  test('TC-MF-20: dien tich hinh vuong voi don vi va so mu tu \\text{}^2', () => {
-    expect(formatMathSymbols('$18\\text{ cm}^2$')).toBe('18 cm²');
+  test('TC-MF-19b: latexToPlainText lam sach hoan toan ca $...$ (dung cho xuat Word)', () => {
+    const raw = 'Cho tam giác $ABC$ vuông tại $A$ có góc nhọn $\\widehat{B} = \\alpha$. $\\sin \\alpha = \\frac{AC}{BC}$';
+    expect(latexToPlainText(raw)).toBe('Cho tam giác ABC vuông tại A có góc nhọn B̂ = α. sin α = AC/BC');
+  });
+
+  test('TC-MF-20 [Da sua - chuyen sang KaTeX]: dien tich hinh vuong voi don vi va so mu tu \\text{}^2, giu nguyen $...$', () => {
+    expect(formatMathSymbols('$18\\text{ cm}^2$')).toBe('$18\\text{ cm}^2$');
+  });
+
+  test('TC-MF-20b: latexToPlainText van doi \\text{}^2 sang Unicode nhu truoc', () => {
+    expect(latexToPlainText('$18\\text{ cm}^2$')).toBe('18 cm²');
+  });
+
+  test('TC-MF-26: doi \\sqrt[3]{...} sang can bac ba Unicode (∛), \\sqrt[4]{...} sang ∜', () => {
+    expect(formatMathSymbols('\\sqrt[3]{27} = 3')).toBe('∛27 = 3');
+    expect(formatMathSymbols('\\sqrt[3]{-8} = -2')).toBe('∛(-8) = -2');
+    expect(formatMathSymbols('\\sqrt[3]{a}')).toBe('∛(a)');
+    expect(formatMathSymbols('\\sqrt[4]{16} = 2')).toBe('∜16 = 2');
+  });
+
+  test('TC-MF-27: \\sqrt[n]{...} voi bac lon hon 4 dung chu so tren ghep truoc dau can', () => {
+    expect(formatMathSymbols('\\sqrt[5]{32} = 2')).toBe('⁵√32 = 2');
+  });
+
+  test('TC-MF-28 [Da sua - chuyen sang KaTeX]: (\\sqrt[3]{...})^3 = a giu nguyen $...$ de KaTeX ve, chi doi phan van ban tieng Viet ben ngoai', () => {
+    const result = formatMathSymbols('$(\\sqrt[3]{a})^3 = a$ đúng với mọi số thực $a$.');
+    expect(result).toBe('$(\\sqrt[3]{a})^3 = a$ đúng với mọi số thực $a$.');
+  });
+
+  test('TC-MF-28b: latexToPlainText van lam sach hoan toan (khong con \\sqrt[ hay dau ngoac nhon)', () => {
+    const result = latexToPlainText('$(\\sqrt[3]{a})^3 = a$ đúng với mọi số thực $a$.');
+    expect(result).toBe('(∛(a))³ = a đúng với mọi số thực a.');
+    expect(result).not.toMatch(/\\sqrt|[{}]/);
+  });
+
+  test('TC-MF-29: doi \\ge \\le \\ne \\pm \\mp sang ky hieu Unicode (dang lenh LaTeX, khac ASCII >= <= !=)', () => {
+    expect(formatMathSymbols('a \\ge 0')).toBe('a ≥ 0');
+    expect(formatMathSymbols('a \\le 0')).toBe('a ≤ 0');
+    expect(formatMathSymbols('a \\ne 0')).toBe('a ≠ 0');
+    expect(formatMathSymbols('x = 2 \\pm 1')).toBe('x = 2 ± 1');
+    expect(formatMathSymbols('x = 2 \\mp 1')).toBe('x = 2 ∓ 1');
+  });
+
+  test('TC-MF-30: doi \\Rightarrow \\Leftrightarrow \\Leftarrow \\to sang mui ten Unicode', () => {
+    expect(formatMathSymbols('x \\Rightarrow y')).toBe('x ⇒ y');
+    expect(formatMathSymbols('x \\Leftrightarrow y')).toBe('x ⇔ y');
+    expect(formatMathSymbols('x \\Leftarrow y')).toBe('x ⇐ y');
+    expect(formatMathSymbols('x \\to y')).toBe('x → y');
+  });
+
+  test('TC-MF-31: doi \\in \\notin sang ∈/∉, \\mathbb{R|N|Z|Q|C} sang chu dam bang Unicode', () => {
+    expect(formatMathSymbols('x \\in \\mathbb{R}')).toBe('x ∈ ℝ');
+    expect(formatMathSymbols('x \\notin \\mathbb{N}')).toBe('x ∉ ℕ');
+    expect(formatMathSymbols('\\mathbb{Z}, \\mathbb{Q}, \\mathbb{C}')).toBe('ℤ, ℚ, ℂ');
+  });
+
+  test('TC-MF-32 [Da sua - chuyen sang KaTeX]: cau Dung/Sai LaTeX day du chua \\in \\mathbb{R} giu nguyen tung cum $...$, chi doi van ban tieng Viet xen giua', () => {
+    const raw = 'Căn thức $\\sqrt{x}$ xác định với mọi giá trị của $x \\in \\mathbb{R}$.';
+    expect(formatMathSymbols(raw)).toBe(raw);
+  });
+
+  test('TC-MF-32b: latexToPlainText van lam sach hoan toan (dung cho xuat Word)', () => {
+    const result = latexToPlainText('Căn thức $\\sqrt{x}$ xác định với mọi giá trị của $x \\in \\mathbb{R}$.');
+    expect(result).toBe('Căn thức √(x) xác định với mọi giá trị của x ∈ ℝ.');
+    expect(result).not.toMatch(/\\in|\\mathbb|[{}]/);
+  });
+
+  test('TC-MF-33 [Edge]: dau "$" le loi (khong co dau dong cap) o ben ngoai van bi xoa nhu truoc (khong doi hanh vi cu)', () => {
+    expect(formatMathSymbols('Giá 5$ vẫn còn đó')).toBe('Giá 5 vẫn còn đó');
+  });
+
+  test('TC-MF-34: nhieu cum $...$ xen ke van ban thuong - cum $...$ giu nguyen, van ban ASCII ben ngoai (vd sqrt(16) go tay khong dung LaTeX) van duoc doi Unicode nhu truoc', () => {
+    const raw = 'Cho $a \\ge 0$, ta có $\\sqrt{a}$, và sqrt(16) = 4.';
+    expect(formatMathSymbols(raw)).toBe('Cho $a \\ge 0$, ta có $\\sqrt{a}$, và √(16) = 4.');
   });
 });

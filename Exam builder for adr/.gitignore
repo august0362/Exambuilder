@@ -8,3 +8,12 @@ local.properties
 captures/
 .externalNativeBuild/
 .cxx/
+
+# Khoa ky release - khong bao gio commit
+keystore.properties
+*.jks
+*.keystore
+
+# APK release da build san (~1.9MB) - de tim, khong commit
+ExamBuilder.apk
+exam_builder.apk

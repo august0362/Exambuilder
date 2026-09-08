@@ -1,0 +1,381 @@
+# PROMPT: Hợp nhất cách hiển thị công thức toán (web + APK) về một dạng chuẩn LaTeX
+
+> Dán toàn bộ file này cho Claude Pro (một phiên mới, không có ngữ cảnh trước).
+> Ngôn ngữ làm việc: tiếng Việt. Repo: `exam-builder` (web Node/Express + frontend thuần, và
+> app Android Compose ở thư mục `Exam builder for adr/`).
+
+---
+
+## 0. MỤC TIÊU MỘT CÂU
+
+Mọi công thức toán 2 chiều (căn, phân số, căn bậc n, luỹ thừa chồng, hệ phương trình, tích phân
+có cận…) — bất kể do AI sinh, giáo viên gõ tay, sửa tay ở màn Xem trước, bóc từ file Word/PDF, hay
+đã lưu sẵn trong đề cũ — phải được quy về **một dạng chuẩn duy nhất là LaTeX trong `$...$`**, rồi
+giao cho **KaTeX (web) / JLaTeXMath (APK)** vẽ. Không renderer "căn giả bằng CSS", không "glyph
+Unicode √". Web và APK phải hội tụ về **một cách vẽ**.
+
+Làm trọn **cả 3 hướng** dưới đây và **sửa cả bản APK**.
+
+---
+
+## 1. BỐI CẢNH & NGUYÊN NHÂN LỖI (đọc kỹ trước khi sửa)
+
+### 1.1 Triệu chứng
+Câu hỏi có `\sqrt{80}`, `\sqrt{5}` (hoặc `sqrt(80)`) nằm **ngoài** `$...$`. Trên web hiện ra căn
+"chắp vá" (móc căn = `border-left` nghiêng, gạch ngang rời rạc, `/5` lọt ra ngoài căn). Trên APK
+hiện glyph Unicode `√` trơ, không có gạch ngang kéo dài. KaTeX/JLaTeXMath **không hề được gọi** cho
+những chỗ này.
+
+### 1.2 Bốn "cửa vào" của nội dung toán
+| Cửa vào | Ai tạo | Ép được về `$...$` LaTeX tại nguồn? |
+|---|---|---|
+| Tab "Tự động" (LLM) | AI | Được — sửa `Gemini_Prompt_Unified.txt` |
+| Tab "Nhập tay" (form) | Giáo viên gõ | Không — giáo viên gõ `sqrt(16)`, `3/4`, `x^2` |
+| Sửa trực tiếp ở Xem trước (contentEditable) | Giáo viên gõ | Không |
+| Tải file Word/PDF (`FileUploadParser`) | Nội dung file | Không |
+| (+ đề cũ đã lưu trong DB / đồng bộ qua Gist) | — | Không — đã nằm đó |
+
+→ Ép AI chỉ bịt **một** cửa. Ba cửa còn lại vẫn đẻ ra math trần → **bắt buộc** phải có "bộ chuẩn
+hoá ký hiệu → LaTeX" chạy ở mọi cửa.
+
+### 1.3 Vì sao trước đây mất cấu trúc
+`formatMathSymbols()` (cũ) có bảng regex "làm phẳng": `\sqrt{80}` → `√80`, `\frac{a}{b}` → `a/b`,
+**kể cả khi nằm ngoài `$...$`**. Sau bước này chuỗi lưu trong máy chỉ còn `√80` / `√5` — cấu trúc
+căn đã mất, không còn LaTeX cho engine nào vẽ.
+
+### 1.4 Nguyên tắc kiến trúc cần chốt
+- **Dạng chuẩn duy nhất mà renderer nhìn thấy = LaTeX trong `$...$`.**
+- App chịu trách nhiệm quy MỌI cửa vào về dạng đó.
+- Ký hiệu **một hàng** đã đẹp sẵn (`x²`, `≤`, `≥`, `×`, `±`, `π`, `°`, `α`) **giữ nguyên Unicode
+  trong text thường** — KHÔNG nhồi vào engine (nhẹ, chọn/copy được, không lệch baseline, APK không
+  sinh drawable thừa trong `LazyColumn`).
+- Bộ chuẩn hoá chỉ "kích hoạt" engine khi đoạn văn có **ít nhất một cấu trúc 2 chiều**.
+- Word/PDF export vẫn cần bản làm phẳng (`latexToPlainText` / `MathConvert.toPlainText`) — dạng
+  chuẩn LaTeX không thay thế chỗ này (nhưng APK có thể rasterise công thức thành ảnh trong file).
+
+---
+
+## 2. HIỆN TRẠNG CODE (đã có sẵn — KHÔNG làm lại từ đầu, chỉ hoàn thiện + port)
+
+### 2.1 Web — Hướng 1 đã dựng khung, còn dở
+- `backend/parser/mathToLatex.js` **đã tồn tại**: hàm `promoteStructuralMath(text)` — bọc mọi cấu
+  trúc 2 chiều ngoài `$...$` thành `$...$` LaTeX, idempotent, coi `$...$` / `$$...$$` có sẵn là khối
+  kín. Có các bước: `wrapLatexCommands` (\sqrt \frac \dfrac \tfrac đã là LaTeX hợp lệ → chỉ thêm
+  `$`), `wrapSqrtCalls` (`sqrt(...)` ASCII), `wrapUnicodeRadicals` (`√` `∛` `∜` `ⁿ√`),
+  `absorbLeadingCoefficient`, `absorbHuggingParens`, `mergeFractions`, `mergeAdjacentSpans`; body
+  builder `bareToLatex`.
+- `backend/parser/mathFormat.js`: `formatMathSymbols()` **đã gọi** `promoteStructuralMath()` ở bước
+  1, rồi mới làm đẹp ký hiệu một hàng ở bước 2 (chỉ vùng ngoài `$...$`). `latexToPlainText()` giữ
+  nguyên vai trò làm phẳng toàn bộ (cho Word export).
+- `backend/parser/mathFraction.js`: `isLikelyFraction(num, den)` — heuristic chặn từ nối tiếng Việt
+  (`va`, `hoac`…), đơn vị đo (`km/h`, `m/s`…), từ xuôi dài. **Đã export để `mathToLatex.js` dùng lại.**
+- `backend/parser/mathRadical.js`: `findMatchingParen()` (export), `segmentRadicals()` (cho renderer
+  CSS fallback).
+- Cửa đã gắn `formatMathSymbols`: `backend/parser/TextPromptParser.js` (AI/prompt),
+  `backend/parser/FileUploadParser.js` (upload), `frontend/script.js` (lưu form + lưu
+  contentEditable ở Xem trước).
+- `frontend/script.js`: `renderMathInline()` (dòng ~19–32) tách `$...$` → `renderKatexSpan()` (KaTeX,
+  `throwOnError:false`, fallback về `$latex$` text khi lỗi); phần ngoài `$...$` vẫn đi
+  `renderRadicalSegments()` → `renderFractionSegments()` (căn/phân số CSS trong `frontend/style.css`
+  `.radical` ~889–928, `.frac` ~863–880).
+- **Test đang đỏ** (`npm test`): `tests/parser/mathToLatex.test.js` (2 ca: `TC-ML-11`, `TC-ML-12` —
+  **bug thật** trong `absorbHuggingParens`/`absorbLeadingCoefficient` và `mergeAdjacentSpans`);
+  `tests/parser/mathFormat.test.js` (~12 ca — phần lớn assert **hành vi làm phẳng cũ** đã lỗi thời,
+  cần viết lại theo hành vi mới "bọc `$...$`"; đọc từng ca, phân biệt "assert lỗi thời → sửa test"
+  với "regression thật → sửa code").
+
+### 2.2 Web — Hướng 2 (prompt) mới sửa một nửa
+- `Gemini_Prompt_Unified.txt` mục "CÁCH VIẾT CÔNG THỨC TOÁN" (dòng ~89–92): hiện **vẫn** cho phép
+  `căn sqrt(16)` và `phân số 3/4` ở dạng ASCII — **mâu thuẫn** với mục tiêu (căn/phân số phải vào
+  `$...$`).
+- `frontend/promptTemplate.js` là **file sinh tự động** từ `Gemini_Prompt_Unified.txt` bằng
+  `npm run gen:prompt` (`tools/gen-prompt-module.js`). **KHÔNG hand-edit `promptTemplate.js`.**
+
+### 2.3 Web — Hướng 3 (chốt chặn) gần xong
+- `formatMathSymbols` đã "bọc thay vì làm phẳng" cho `\sqrt` / `\frac` / `sqrt(...)` / `√`.
+- **Còn thiếu**: `\begin{env}...\end{env}` (cases, matrix, aligned…) nằm ngoài `$...$` — hiện
+  `promoteStructuralMath` **không** bọc; và cần chắc chắn `latexToPlainText`/bảng `SYMBOL_REPLACEMENTS`
+  không bao giờ được chạy trên `\sqrt`/`\frac`/`\begin` ngoài `$...$` **trước khi** `promoteStructuralMath`
+  kịp bọc chúng (thứ tự trong `formatMathSymbols` đã đúng — nhưng thêm test khoá chặt).
+
+### 2.4 APK — CHƯA làm gì cho Hướng 1
+- `Exam builder for adr/app/src/main/java/com/exambuilder/android/math/`:
+  - `MathConvert.kt` — **port của `mathFormat.js` cũ**: `toPlainText()` (làm phẳng toàn bộ),
+    `normalizeInput()` (làm phẳng ASCII ngoài `$...$`, giữ `$...$` nguyên), `segments()` (làm phẳng
+    rồi tách run `^{}`/`_{}` thành super/subscript). **CHƯA có `promoteStructuralMath`.**
+  - `MathParser.kt` — `parseMathNodes(raw)` chỉ tách `$$...$$`, `$...$`, và bare `\begin{env}` (env
+    trong danh sách). `MathNode.Text` / `MathNode.Formula(latex, block)`. `groupMathNodes()`.
+  - `MathText.kt` — Composable. **Fast path** (dòng 64–78): nếu `parseMathNodes` không thấy
+    `Formula` nào → vẽ `Text` Unicode thuần qua `buildMathAnnotatedString` (→ `MathConvert.segments`).
+    Có `Formula` → `InlineMathText` (nhúng drawable JLaTeXMath vào dòng chữ qua `InlineTextContent`,
+    fallback về `buildMathAnnotatedString(node.latex)` khi `LatexImage.drawable` trả null) /
+    `BlockFormula` (dòng riêng, cuộn ngang).
+  - `LatexImage.kt` — `drawable()` / `bitmap()` bọc `JLatexMathDrawable`, `runCatching` → null khi
+    parse lỗi.
+- Cửa nhập tay APK: `ui/screens/QuestionEditorSheet.kt` `buildQuestion()` (dòng ~273) — **đã gọi**
+  `MathConvert.normalizeInput(...)` trên content/explanation/option/fill answer.
+- Export APK: `export/PdfExporter.kt` (~233), `export/DocxExporter.kt` (~160) — `parseMathNodes` rồi
+  `MathConvert.toPlainText` cho text node + rasterise `Formula` qua `LatexImage`.
+- Không có `app/src/test/` — **theo ghi chú dự án, JVM unit test của module Android không chạy được
+  cục bộ** (đường dẫn có dấu cách + dấu tiếng Việt). Vẫn VIẾT test nhưng chấp nhận không chạy local;
+  bù lại phải build APK thành công.
+
+---
+
+## 3. VIỆC CẦN LÀM
+
+### TASK A — Hướng 2: siết prompt AI
+
+Trong `Gemini_Prompt_Unified.txt`, mục "CÁCH VIẾT CÔNG THỨC TOÁN":
+
+1. Sửa quy tắc thành:
+   - **Bắt buộc `$...$` LaTeX** cho: mọi căn (`$\sqrt{80}$`, `$\sqrt[3]{x+1}$`), mọi phân số
+     (`$\dfrac{2}{3}$`), luỹ thừa có cơ số/biểu thức phức (`$x^{n+1}$`, `$(a+b)^2$`), tích phân/tổng
+     có cận, hệ phương trình, ma trận, giới hạn.
+   - **ASCII trần chỉ cho thứ thật sự MỘT HÀNG**: `x^2` (mũ số đơn), `a*b`, `<=` `>=` `!=` `<=>`
+     `=>`, đơn vị `cm2` `cm3`, số thập phân, dấu `±` viết `+-`.
+   - Giữ nguyên câu "không trộn nửa ASCII nửa LaTeX trong một biểu thức".
+   - Thêm 1 câu: "Nếu một biểu thức có căn hoặc phân số thì **cả biểu thức** đó phải nằm trong
+     `$...$` (kể cả phần số/biến ngoài căn), ví dụ viết `$2\sqrt{3}+1$` chứ không phải `2$\sqrt{3}$+1`."
+2. Rà mục "KHUNG MẪU" và các ví dụ `De_Bai` / `Loi_Giai` (dòng ~159–165 và toàn bộ ví dụ khác):
+   mọi căn/phân số trong ví dụ phải ở dạng `$...$`.
+3. Chạy `npm run gen:prompt` để sinh lại `frontend/promptTemplate.js`. Commit cả hai file.
+   **Không sửa tay `promptTemplate.js`.**
+
+### TASK B — Hướng 1 (web): hoàn thiện bộ chuẩn hoá
+
+1. **Sửa 2 bug thật** trong `backend/parser/mathToLatex.js` để `tests/parser/mathToLatex.test.js`
+   xanh hết:
+   - `TC-ML-11` (hệ số + ngoặc ôm sát cụm căn → nuốt vào `$...$`).
+   - `TC-ML-12` (gộp các cụm `$...$` kề nhau qua toán tử thành 1 công thức).
+   Đọc kỹ ca test để biết output kỳ vọng; sửa `absorbLeadingCoefficient` / `absorbHuggingParens` /
+   `mergeAdjacentSpans` cho khớp, không phá ca đang xanh.
+2. **Thêm bọc `\begin{env}...\end{env}`** (env toán đã biết: cases, matrix, pmatrix, bmatrix,
+   vmatrix, aligned, align, array, gathered…) nằm ngoài `$...$` → bọc thành `$$...$$` (block) trong
+   `promoteStructuralMath` (thêm bước, chạy trước hoặc trong `onePass`, tôn trọng vùng `$...$` kín).
+3. **Viết lại các ca lỗi thời** trong `tests/parser/mathFormat.test.js` theo hành vi mới: căn/phân
+   số/`sqrt(...)`/`√` ngoài `$...$` → kỳ vọng `$\sqrt{...}$` / `$\dfrac{...}{...}$`; ký hiệu một
+   hàng vẫn kỳ vọng Unicode (`x^2`→`x²`, `<=`→`≤`, `a*b`→`a × b`). Giữ tên ca (`TC-MF-…`), ghi chú
+   `[Da sua - chuyen sang $...$ LaTeX]` như các ca đã sửa trước đó.
+4. **Idempotency**: đảm bảo `formatMathSymbols(formatMathSymbols(x)) === formatMathSymbols(x)` cho
+   mọi input trong test (có ca `TC-MF-10`). `promoteStructuralMath` phải idempotent tuyệt đối.
+5. **Bảo toàn tiếng Việt**: bộ chuẩn hoá KHÔNG được kéo chữ tiếng Việt (kể cả có dấu) vào `$...$`.
+   Thêm ca test: `"phương án B"`, `"km/h"`, `"và/hoặc"`, `"Câu 12/5 SGK"` → giữ nguyên, không thành
+   phân số.
+6. `renderMathInline` (`frontend/script.js`): giữ `renderRadicalSegments` làm **fallback** cho lúc
+   giáo viên đang gõ (chưa lưu, chưa qua `formatMathSymbols`). Không cần gỡ CSS `.radical`/`.frac`
+   ngay, nhưng thêm comment `// fallback - moi noi dung da luu deu di qua KaTeX`.
+   *(Tuỳ chọn, nếu gọn:* cho `renderMathInline` chạy `promoteStructuralMath` trên đoạn ngoài `$...$`
+   trước khi quyết định KaTeX hay CSS — để nội dung chưa lưu cũng vẽ đẹp.)*
+
+### TASK C — Hướng 3 (web): chốt chặn dữ liệu hỏng
+
+1. Trong `formatMathSymbols`, thứ tự **phải** là: `promoteStructuralMath` (bọc) → rồi mới
+   `applyReplacements` **chỉ trên vùng ngoài `$...$`**. Không đổi.
+2. Thêm test khoá: `formatMathSymbols('Cho \\sqrt{80} va \\frac{1}{2} ngoai dola')` →
+   `\sqrt{80}` và `\frac{1}{2}` phải nằm trong `$...$` ở output, **không** bị làm phẳng thành `√80`,
+   `1/2`.
+3. Thêm test: `\begin{cases}...\end{cases}` trần → `$$\begin{cases}...\end{cases}$$`.
+
+### TASK D — APK: port bộ chuẩn hoá + đấu dây (phần "sửa cả bản apk")
+
+1. **Port `promoteStructuralMath` sang Kotlin**, đặt trong
+   `Exam builder for adr/app/src/main/java/com/exambuilder/android/math/MathConvert.kt` (thêm
+   `fun promoteStructuralMath(text: String?): String` vào `object MathConvert`) **hoặc** file mới
+   `MathPromote.kt` cùng package. Yêu cầu:
+   - **Port trung thành từng bước** từ `backend/parser/mathToLatex.js` — cùng tên bước, cùng thứ
+     tự, cùng số vòng lặp fixed-point. Ghi comment `// Port cua backend/parser/mathToLatex.js - giu
+     dong bo`.
+   - Port kèm heuristic `isLikelyFraction` từ `backend/parser/mathFraction.js` (blocklist từ nối,
+     `UNIT_TOKENS`, `isLikelyProseWord`, `stripDiacritics` bằng `Normalizer.normalize(..., NFD)` +
+     xoá `\p{M}`) — đặt cạnh nhau hoặc trong `MathConvert`.
+   - Port `findMatchingParen` / `matchBrace`.
+   - **Thuần JVM, không import Android/Compose** (để về sau có thể unit-test).
+   - Idempotent.
+2. **Đấu dây vào `parseMathNodes`** (`MathParser.kt`): chạy `MathConvert.promoteStructuralMath(raw)`
+   **đầu tiên**, rồi mới tách `$$` / `$` / `\begin`. Cách gọn nhất:
+   ```kotlin
+   fun parseMathNodes(raw: String?): List<MathNode> {
+       val promoted = MathConvert.promoteStructuralMath(raw) ?: return emptyList()
+       // ... phần còn lại giữ nguyên, chạy trên `promoted`
+   }
+   ```
+   Sau bước này, `MathText` fast-path tự động nhường sang đường JLaTeXMath khi có cấu trúc 2 chiều —
+   **không cần sửa `MathText.kt`** (kiểm tra lại: `nodes.none { it is MathNode.Formula }` vẫn đúng).
+3. **Đấu dây vào cửa nhập tay** — `MathConvert.normalizeInput`: thêm `promoteStructuralMath` làm
+   bước 1 (mirror `formatMathSymbols` web):
+   ```kotlin
+   fun normalizeInput(text: String?): String {
+       if (text.isNullOrEmpty()) return ""
+       val promoted = promoteStructuralMath(text)
+       // ... phần cũ (làm đẹp ASCII ngoài $...$) chạy trên `promoted`
+   }
+   ```
+   `QuestionEditorSheet.kt` đã gọi `normalizeInput` nên không phải sửa thêm.
+4. **`MathConvert.segments` / `toPlainText` giữ nguyên** — chỉ còn là fallback (khi
+   `LatexImage.drawable` null) + ký hiệu một hàng trong `MathNode.Text`. Không gỡ.
+5. **Export PDF/DOCX**: sau khi `parseMathNodes` promote, nhiều đoạn thành `MathNode.Formula` →
+   `PdfExporter`/`DocxExporter` rasterise qua `LatexImage.bitmap` (vinculum thật trong file). Kiểm
+   tra: `MathConvert.toPlainText` vẫn dùng cho đáp án `FILL_BLANK` và fallback text. Không đổi logic,
+   chỉ chạy thử build + xuất 1 đề mẫu có căn/phân số.
+6. **Hiệu năng `LazyColumn`**: bộ chuẩn hoá chỉ tạo `Formula` khi có cấu trúc 2 chiều thật; `x²`,
+   `≤`, `π`… vẫn là Unicode trong `Text`. Giữ `remember(text)` quanh `parseMathNodes` và
+   `remember(...)` quanh `LatexImage.drawable` (đã có). Nếu 1 câu ra > ~6 drawable inline, cân nhắc
+   gộp cả câu thành 1 `$...$` — nhưng chỉ khi đo thấy giật.
+
+### TASK E — Dữ liệu đề cũ (đã lưu / đồng bộ Gist)
+
+Đề cũ đã bị `formatMathSymbols` (bản cũ) làm phẳng → `√80`, `1/2`. Bộ chuẩn hoá mới **cứu được đa
+số** (`√` + số nguyên, `√(...)` có ngoặc, phân số gọn). Không cứu 100% (`\sqrt{80}/5` và
+`\sqrt{80/5}` nếu cùng phẳng thành `√80/5` thì không phân biệt được).
+
+1. **Web**: khi nạp một đề vào editor (`state`), chạy `formatMathSymbols` một lượt trên tất cả
+   field (content / explanation / option_text / correct_answer) trước khi render. Lần auto-save kế
+   tiếp sẽ ghi đè bản đã nâng cấp. Tìm chỗ nạp đề (load exam vào `state` trong `frontend/script.js`,
+   và/hoặc `backend/routes/examRoutes.js` khi trả đề) và thêm bước này. `formatMathSymbols` idempotent
+   nên chạy trên đề mới cũng vô hại.
+2. **APK**: khi đề sync về từ Gist / nạp từ store local, chạy `MathConvert.promoteStructuralMath`
+   một lượt trên các field trước khi hiển thị/lưu. Tìm chỗ import trong `sync/` và `data/`.
+3. Không viết script migrate DB một lần (rủi ro, và Gist là nguồn thật) — chuẩn hoá **khi nạp** là
+   đủ và an toàn.
+
+---
+
+## 4. QUY TẮC CỨNG CHO BỘ CHUẨN HOÁ (áp dụng cả JS lẫn Kotlin — phải khớp nhau)
+
+Đây là các điểm mập mờ; chốt luật cứng để JS và Kotlin cho **cùng** kết quả:
+
+1. **Toán hạng của `√` / `∛` không có ngoặc** = chỉ token số hoặc 1 chữ cái liền ngay sau.
+   `√80` → `\sqrt{80}`. `√80/5` → `\sqrt{80}/5` → (bước phân số) → `\frac{\sqrt{80}}{5}` **chỉ khi**
+   `isLikelyFraction` cho phép. `√x+1` → `\sqrt{x}+1` (KHÔNG `\sqrt{x+1}`).
+2. **`sqrt(...)` / `√(...)` có ngoặc** = lấy trọn trong ngoặc cân bằng (kể cả lồng nhau).
+3. **`a/b` → phân số** chỉ khi **cả hai vế "gọn"** (token số/biến/`$...$`/`(...)` ngắn, không
+   khoảng trắng — hoặc có khoảng trắng nhưng ít nhất một vế bắt đầu bằng `$` hoặc `(`) **và**
+   `isLikelyFraction(num, den)` = true (không phải từ nối tiếng Việt, không phải cặp đơn vị đo,
+   không phải từ xuôi dài, không phải chữ thường ≥ 3 ký tự).
+4. **Mập mờ thì để một hàng** (an toàn hơn là đoán sai). `2/√3` khi `√3` chưa được bọc → xử lý ở
+   vòng fixed-point sau khi `√3` thành `$\sqrt{3}$`, rồi `2 / $\sqrt{3}$` → `$\frac{2}{\sqrt{3}}$`.
+5. **`$...$` / `$$...$$` có sẵn = khối kín**, không đụng nội dung bên trong.
+6. **Không kéo chữ (kể cả chữ tiếng Việt có dấu) vào `$...$`.** Ranh giới `mergeFractions` phải có
+   lookbehind/lookahead loại `\p{L}\p{M}`.
+7. **Ký hiệu một hàng** (`^` mũ đơn, `<=`, `>=`, `!=`, `*`, `+-`, đơn vị, chữ Hy Lạp `\alpha`,
+   `\circ`) — bộ chuẩn hoá **không** đụng; để `applyReplacements` / `MathConvert.RULES` xử lý sau,
+   chỉ ở vùng ngoài `$...$`.
+8. **`$` lẻ (không thành cặp)**: không được làm hỏng phần sau. Cân nhắc: trong `promoteStructuralMath`,
+   nếu tổng số `$` lẻ thì bỏ qua bước merge nhạy cảm, hoặc escape. Thêm test cho input có `$` lẻ.
+
+---
+
+## 5. KIỂM THỬ & BUILD
+
+### Web
+- `npm test` **xanh toàn bộ** (Jest). Trọng tâm: `tests/parser/mathToLatex.test.js`,
+  `tests/parser/mathFormat.test.js`, `tests/parser/mathFraction.test.js`,
+  `tests/parser/mathRadical.test.js`, `tests/parser/TextPromptParser.test.js`.
+- Thêm **bảng test vector dùng chung** (`tests/parser/mathPromoteVectors.js` hoặc trong
+  `mathToLatex.test.js`): danh sách `{ input, expected }` — đây là "hợp đồng" mà bản Kotlin phải
+  khớp. Ít nhất 20 vector phủ: căn số nguyên trần, `sqrt()` ASCII, `√(...)` Unicode, căn bậc 3/n,
+  `\sqrt`/`\frac` LaTeX trần, phân số gộp qua `/`, hệ số dẫn trước, ngoặc ôm, `\begin{cases}`,
+  tiếng Việt không bị đụng, `$` lẻ, idempotency.
+- Chạy thử app (`npm start`): tạo/nạp 1 đề có `\sqrt{80}`, `sqrt(80)`, `√80`, `\frac{a}{b}` trần và
+  trong `$...$` → tất cả vẽ căn/phân số có **gạch ngang liền nét** bằng KaTeX; tiếng Việt quanh đó
+  không lỗi.
+
+### APK (thư mục `Exam builder for adr/`)
+- Module `math` **compile sạch** (thuần JVM, không import Android trong phần port).
+- Viết `app/src/test/java/com/exambuilder/android/math/MathPromoteTest.kt` dùng **cùng bảng test
+  vector** với web (port sang Kotlin). Chạy được thì tốt; nếu môi trường không chạy được JVM test
+  (đường dẫn có dấu cách/tiếng Việt — đã biết), ghi rõ trong báo cáo là "đã viết, chưa chạy local".
+- **Build APK release ký** theo quy trình dự án (JDK 24, `keystore.properties` + `.jks` đã
+  gitignore, R8 + keep rule kotlinx.serialization). Xác nhận `exam_builder.apk` build xong.
+- Nếu chạy được emulator/thiết bị: mở 1 đề có căn/phân số trần → xác nhận JLaTeXMath vẽ vinculum,
+  cuộn `LazyColumn` 30–40 câu không giật; xuất PDF/DOCX → công thức là ảnh nét.
+
+---
+
+## 6. TIÊU CHÍ NGHIỆM THU
+
+1. Câu trong ảnh lỗi gốc (`\sqrt{80}`, `\sqrt{5}` / `sqrt(80)` ngoài `$...$`) hiển thị căn có gạch
+   ngang liền nét trên **cả web lẫn APK**, phủ đúng bề rộng toán hạng.
+2. Cả 4 cửa vào (AI / nhập tay / sửa Xem trước / upload file) + đề cũ nạp lại → đều ra `$...$` LaTeX
+   trong dữ liệu lưu.
+3. `mathToLatex.js` (JS) và `promoteStructuralMath` (Kotlin) cho **cùng output** trên bảng test
+   vector chung.
+4. Không có chữ tiếng Việt nào bị bọc vào `$...$`. `km/h`, `và/hoặc`, `Câu 12/5` giữ nguyên.
+5. `npm test` xanh. APK build release thành công.
+6. Ký hiệu một hàng (`x²`, `≤`, `π`, `°`) vẫn là text Unicode, không thành ảnh/drawable.
+7. Word/PDF export (web + APK) không vỡ: web dùng `latexToPlainText` làm phẳng, APK rasterise ảnh.
+
+---
+
+## 7. GIỚI HẠN ĐÃ BIẾT / NGOÀI PHẠM VI
+
+- Đề cũ đã mất thông tin do làm phẳng cũ: cứu được đa số, phần còn lại (`\sqrt{80}/5` vs
+  `\sqrt{80/5}` cùng phẳng thành `√80/5`) phải sinh lại đề hoặc sửa tay — **chấp nhận**, ghi vào
+  báo cáo.
+- Không gỡ hẳn CSS `.radical`/`.frac` và glyph Unicode `√` của Android trong lần này — giữ làm
+  fallback khi engine parse lỗi. Có thể dọn dần ở PR sau.
+- Word export (.docx) của web vẫn cần `latexToPlainText` — dạng chuẩn LaTeX không thay thế được vì
+  text run trong .docx không có engine.
+- Không dựng WebView/KaTeX trên Android (jank + memory) — giữ JLaTeXMath.
+
+---
+
+## 8. QUY TRÌNH LÀM VIỆC
+
+- Tạo nhánh mới từ `main` (đừng commit thẳng `main`).
+- Làm theo thứ tự: **A → C → B → D → E** (prompt & chốt chặn trước để không đẻ thêm dữ liệu hỏng;
+  rồi hoàn thiện web; rồi port APK; rồi migration).
+- Mỗi task: chạy `npm test` trước khi sang task sau.
+- Commit tách theo task, message tiếng Việt rõ ràng, kết thúc bằng:
+  ```
+  Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+  ```
+- Cuối cùng: báo cáo ngắn gọn từng task đã làm gì, test pass/fail, APK build được không, phần nào
+  chưa chạy được local và vì sao.
+- Nếu tạo Pull Request, phần mô tả kết thúc bằng:
+  ```
+  🤖 Generated with [Claude Code](https://claude.com/claude-code)
+  ```
+
+
+# BỐI CẢNH & YÊU CẦU DỰ ÁN: CHUẨN HOÁ RENDER CÔNG THỨC TOÁN (WEB & ANDROID APK)
+
+## 1. Vấn đề hiện tại
+Chúng tôi đã trace toàn bộ đường đi của công thức toán học trên cả Web và Android APK. Bản sửa trước đây chỉ render tốt công thức nằm trong cặp dấu `$…$`. Đối với các biểu thức nằm ngoài `$…$` (do AI sinh ra thiếu `$`, giáo viên gõ tay `sqrt(16)`, `3/4`, đề cũ đã lưu, hoặc file tải lên):
+- **Phía Web:** Bị `formatMathSymbols()` làm phẳng regex (`\sqrt{80}` → `√80`, `\frac{a}{b}` → `a/b`), sau đó đẩy vào `renderRadicalSegments()` vẽ căn giả bằng CSS (`style.css:889-928`). Kết quả: nét móc bị nghiêng 22° như dấu `/`, gạch ngang rời rạc, các biểu thức như `√80/5` bị rơi ra ngoài căn.
+- **Phía Android APK:** `parseMathNodes()` không thấy `$…$` nên chạy vào "fast path" text thuần (`MathText.kt:67`), chỉ đổi ký tự qua `MathConvert` thành glyph Unicode `√` (không có gạch ngang trên đầu). `JLaTeXMath` hoàn toàn không được kích hoạt.
+
+## 2. Kiến trúc giải pháp đã chốt (Thực hiện đồng thời 3 phần)
+Chúng tôi quyết định chọn phương án đưa **MỌI công thức có cấu trúc 2 chiều về một Engine chuẩn duy nhất** (KaTeX trên Web / JLaTeXMath trên APK):
+
+1. **Bộ chuẩn hoá & nâng cấp (Ký hiệu → LaTeX):**
+   - Xây dựng hàm nâng cấp ngược: Nhận diện Unicode bị làm phẳng (`√80`, `√(x+1)`, `∛27`), ASCII gõ tay (`sqrt(16)`, `3/4`), hoặc LaTeX trần không bọc `$…$` (`\sqrt{80}`, `\frac{a}{b}`) để chuyển thành LaTeX chuẩn (`\sqrt{80}`, `\frac{3}{4}`,...).
+   - Tái sử dụng logic/heuristic nhận diện đã có từ `mathRadical.js` và `mathFraction.js:48` (`isLikelyFraction`) để phân biệt toán hạng với văn xuôi thông thường (tránh bắt nhầm "và/hoặc", "km/h", "ngày 12/5").
+   - **Quy tắc phân loại:**
+     + *Cấu trúc 2 chiều (căn, phân số xếp chồng, căn bậc n, luỹ thừa phức tạp):* Bắt buộc chuyển sang LaTeX để engine vẽ.
+     + *Ký hiệu 1 hàng (x², ≤, ≥, ±, π, α, đơn vị):* Giữ nguyên text Unicode thuần để nhẹ bộ nhớ, copy được, không ép thành ảnh JLaTeXMath/KaTeX làm vỡ baseline và hao RAM (đặc biệt trong `LazyColumn` của Android).
+
+2. **Cập nhật Renderer trên Web & Android APK:**
+   - **Web:** Sửa `renderMathInline`. Với đoạn ngoài `$…$`, cho chạy qua bộ chuẩn hoá. Đoạn nào phát hiện cấu trúc 2 chiều thì gọi `renderKatexSpan()`. Giữ CSS `.radical` / `.frac` cũ làm fallback khi KaTeX lỗi.
+   - **APK:** Sửa `MathText.kt` và `parseMathNodes`. Chạy bộ chuẩn hoá trên `MathNode.Text`, tách các cấu trúc 2 chiều thành `MathNode.Formula(block=false)` để `InlineMathText` vẽ qua `JLaTeXMath`.
+   - **Chốt chặn parser:** Sửa `formatMathSymbols()` / `TextPromptParser`. Khi gặp `\sqrt`, `\frac`, `\begin{}` đứng trần ngoài `$…$`, phải tự động bọc `$…$` lại thay vì làm phẳng thành text thô.
+
+3. **Tối ưu Prompt sinh đề AI:**
+   - Cập nhật `Gemini_Prompt_Unified.txt:89-92` và quy trình `npm run gen:prompt`. Bắt buộc AI bọc `$…$` cho mọi cấu trúc 2 chiều, chỉ dùng ASCII cho ký hiệu 1 hàng đơn giản.
+
+---
+
+## 3. CHỈ THỊ DÀNH CHO CLAUDE PRO (QUAN TRỌNG)
+
+> **DỪNG LẠI! CHƯA VIẾT CODE NGAY.**
+> 
+> Trước khi đưa ra giải pháp kỹ thuật chi tiết, kế hoạch refactor hoặc viết mã nguồn, bạn **PHẢI** đặt câu hỏi phỏng vấn tôi thật chi tiết về codebase, kiến trúc hiện tại, logic nghiệp vụ, và các trường hợp biên. 
+> 
+> Hãy **hỏi càng nhiều càng tốt**, đi sâu vào:
+> 1. Cấu trúc thư mục, các file liên quan trên cả Web (`mathFormat.js`, `mathRadical.js`, `mathFraction.js`, v.v.) và Android (`MathText.kt`, `MathConvert.kt`, v.v.).
+> 2. Các quy tắc phân tách AST / Node parsing hiện tại.
+> 3. Cách lưu trữ, đồng bộ dữ liệu (Local state, Gist, Database, export Word/PDF).
+> 4. Hiệu năng của Compose (`LazyColumn`, caching Bitmap của `JLaTeXMath`) và các edge cases bạn nghi ngờ.
+> 
+> Hãy liệt kê toàn bộ các câu hỏi phân loại theo từng nhóm rõ ràng để tôi trả lời trước!

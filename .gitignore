@@ -1,3 +1,7 @@
 node_modules/
 backend/exam.db
 coverage/
+resources/models/
+
+# Ghi chu ca nhan / chua token - KHONG commit
+Document.txt

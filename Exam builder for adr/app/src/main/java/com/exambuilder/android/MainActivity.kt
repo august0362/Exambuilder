@@ -6,21 +6,32 @@ import androidx.activity.compose.setContent
 import androidx.activity.viewModels
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.exambuilder.android.data.AppSettings
+import com.exambuilder.android.data.AppSettingsStore
 import com.exambuilder.android.ui.navigation.ExamBuilderNavHost
 import com.exambuilder.android.ui.theme.ExamBuilderTheme
 import com.exambuilder.android.viewmodel.ExamViewModel
+import com.exambuilder.android.viewmodel.LibraryViewModel
 
 class MainActivity : ComponentActivity() {
 
     private val viewModel: ExamViewModel by viewModels()
+    private val libraryViewModel: LibraryViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        val appSettingsStore = AppSettingsStore(applicationContext)
         setContent {
-            ExamBuilderTheme {
+            val settings by appSettingsStore.settings.collectAsStateWithLifecycle(initialValue = AppSettings())
+            ExamBuilderTheme(
+                themeId = settings.themeId,
+                fontScale = settings.fontScale
+            ) {
                 Surface(modifier = Modifier.fillMaxSize()) {
-                    ExamBuilderNavHost(viewModel)
+                    ExamBuilderNavHost(viewModel, libraryViewModel, appSettingsStore)
                 }
             }
         }

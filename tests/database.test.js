@@ -9,11 +9,40 @@ const { getDb, closeDb } = require('../backend/database');
 describe('database.js (SQLite schema)', () => {
   afterEach(async () => { await closeDb(); });
 
-  test('TC-DB-01: getDb() tao du 5 bang theo dung ERD', async () => {
+  test('TC-DB-01: getDb() tao du 11 bang (5 de thi + 4 module LLM + SAVED_EXAM + SYNC_SETTINGS)', async () => {
     const db = await getDb();
     const rows = await db.all("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name");
     const tableNames = rows.map(r => r.name).sort();
-    expect(tableNames).toEqual(['EXAM', 'EXAM_SHARE', 'QUESTION', 'QUESTION_BLOCK', 'QUESTION_OPTION']);
+    expect(tableNames).toEqual([
+      'EXAM', 'EXAM_SHARE', 'LLM_MODEL', 'LLM_SETTINGS', 'QUESTION', 'QUESTION_BLOCK', 'QUESTION_OPTION',
+      'RESOURCE_DOCUMENT', 'RESOURCE_SECTION', 'SAVED_EXAM', 'SYNC_SETTINGS'
+    ]);
+  });
+
+  test('TC-DB-06: SAVED_EXAM co du cot (payload_json NOT NULL, deleted_at nullable, timestamp mac dinh ISO)', async () => {
+    const db = await getDb();
+    const cols = (await db.all('PRAGMA table_info(SAVED_EXAM)')).reduce((m, c) => (m[c.name] = c, m), {});
+    expect(Object.keys(cols).sort()).toEqual([
+      'created_at', 'deleted_at', 'duration_minutes', 'exam_id', 'payload_json',
+      'school_header', 'subject', 'title', 'updated_at'
+    ]);
+    expect(cols.payload_json.notnull).toBe(1);
+
+    await db.run(
+      `INSERT INTO SAVED_EXAM (exam_id, title, payload_json) VALUES (?, ?, ?)`,
+      ['e1', 'De 1', '{"blocks":[]}']
+    );
+    const row = await db.get('SELECT created_at, updated_at, deleted_at FROM SAVED_EXAM WHERE exam_id = ?', ['e1']);
+    expect(row.deleted_at).toBeNull();
+    expect(row.created_at).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/);
+  });
+
+  test('TC-DB-07: SYNC_SETTINGS chi cho phep 1 dong (id = 1)', async () => {
+    const db = await getDb();
+    await db.run(`INSERT INTO SYNC_SETTINGS (id, github_token) VALUES (1, 'tok')`);
+    await expect(
+      db.run(`INSERT INTO SYNC_SETTINGS (id, github_token) VALUES (2, 'tok2')`)
+    ).rejects.toThrow();
   });
 
   test('TC-DB-02: getDb() goi nhieu lan tra ve cung 1 instance (singleton)', async () => {

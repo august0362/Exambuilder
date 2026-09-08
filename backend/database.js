@@ -51,6 +51,63 @@ CREATE TABLE IF NOT EXISTS EXAM_SHARE (
   expires_at  TEXT,
   is_active   INTEGER DEFAULT 1
 );
+
+CREATE TABLE IF NOT EXISTS LLM_SETTINGS (
+  provider    TEXT PRIMARY KEY CHECK (provider IN ('openai','anthropic','gemini')),
+  api_key     TEXT NOT NULL,
+  updated_at  TEXT DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS LLM_MODEL (
+  model_id      TEXT PRIMARY KEY,
+  display_name  TEXT NOT NULL,
+  source_type   TEXT NOT NULL CHECK (source_type IN ('cloud','local_gguf')),
+  provider      TEXT CHECK (provider IN ('openai','anthropic','gemini')),
+  model_name    TEXT,
+  file_path     TEXT,
+  file_size     INTEGER,
+  created_at    TEXT DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS RESOURCE_DOCUMENT (
+  doc_id      TEXT PRIMARY KEY,
+  title       TEXT NOT NULL,
+  subject     TEXT,
+  created_at  TEXT DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS RESOURCE_SECTION (
+  section_id     TEXT PRIMARY KEY,
+  doc_id         TEXT NOT NULL REFERENCES RESOURCE_DOCUMENT(doc_id) ON DELETE CASCADE,
+  section_title  TEXT NOT NULL,
+  content        TEXT NOT NULL,
+  sort_order     INTEGER DEFAULT 0
+);
+
+-- Kho de (lich su luu tru): moi de la 1 dong, payload_json giu nguyen
+-- { title, subject, duration_minutes, school_header, blocks } - dung 1:1
+-- voi file exambuilder-library.json tren Gist de dong bo. Xoa de = dat
+-- deleted_at (tombstone), giu dong lai de tombstone lan duoc qua Gist.
+CREATE TABLE IF NOT EXISTS SAVED_EXAM (
+  exam_id          TEXT PRIMARY KEY,
+  title            TEXT,
+  subject          TEXT,
+  duration_minutes INTEGER,
+  school_header    TEXT,
+  payload_json     TEXT NOT NULL,
+  created_at       TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+  updated_at       TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+  deleted_at       TEXT
+);
+
+-- Cau hinh dong bo Gist - 1 dong duy nhat (id = 1). Token luu plaintext,
+-- cung muc voi LLM_SETTINGS.api_key.
+CREATE TABLE IF NOT EXISTS SYNC_SETTINGS (
+  id             INTEGER PRIMARY KEY CHECK (id = 1),
+  github_token   TEXT,
+  gist_id        TEXT,
+  last_synced_at TEXT
+);
 `;
 
 async function getDb() {

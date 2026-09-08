@@ -1,3 +1,5 @@
+import { promoteStructuralMath } from './mathToLatex.js';
+
 const SUPERSCRIPT_DIGITS = { 0: '⁰', 1: '¹', 2: '²', 3: '³', 4: '⁴', 5: '⁵', 6: '⁶', 7: '⁷', 8: '⁸', 9: '⁹' };
 const GREEK_LETTERS = { alpha: 'α', beta: 'β', gamma: 'γ', delta: 'δ', theta: 'θ', pi: 'π', phi: 'φ', lambda: 'λ', mu: 'μ', omega: 'ω' };
 const GREEK_CHARS = Object.values(GREEK_LETTERS).join('');
@@ -11,6 +13,11 @@ const wrapIfExpression = s => (/[+-]/.test(s) ? `(${s})` : s);
 // (U+0305) ghep tung ky tu vi ky tu do hien thi be, dinh lien vao chu so o
 // nhieu font/trinh duyet, gay loi "gach ngang dinh vao so".
 const wrapSqrtContent = s => (/^[0-9]+$/.test(s) ? s : `(${s})`);
+// Can bac n (\sqrt[3]{x}, \sqrt[4]{x}...): dung ky tu Unicode dung san cho
+// bac 3/4 (∛/∜ - khong phai combining nen an toan nhu √), con bac khac thi
+// ghep chu so tren truoc dau √ (vd "⁵√") theo quy uoc toan hoc pho bien.
+const ROOT_INDEX_SYMBOLS = { 2: '√', 3: '∛', 4: '∜' };
+const rootSymbolFor = n => ROOT_INDEX_SYMBOLS[n] || toSuperscript(n) + '√';
 
 // Cac cap thay the theo dung thu tu: chuoi dai/dac hieu hon (hoac phu thuoc
 // vao ket qua cua buoc truoc) phai duoc xu ly truoc. Cac lenh LaTeX
@@ -39,6 +46,24 @@ const SYMBOL_REPLACEMENTS = [
   [/\\cdot\b/g, '×'],
   [/\\times\b/g, '×'],
   [/\\div\b/g, '÷'],
+  [/\\pm\b/g, '±'],
+  [/\\mp\b/g, '∓'],
+
+  // --- LaTeX: quan he so sanh / suy ra / tap hop (dang lenh, ung voi cac
+  // dang ASCII => <= >= != da co san ben duoi) ---
+  [/\\ge\b/g, '≥'],
+  [/\\le\b/g, '≤'],
+  [/\\ne\b/g, '≠'],
+  [/\\Leftrightarrow\b/g, '⇔'],
+  [/\\Rightarrow\b/g, '⇒'],
+  [/\\Leftarrow\b/g, '⇐'],
+  [/\\to\b/g, '→'],
+  [/\\in\b/g, '∈'],
+  [/\\notin\b/g, '∉'],
+
+  // --- LaTeX: \mathbb{X} -> chu Unicode "chu dam bang" cho cac tap so quen
+  // thuoc (R, N, Z, Q, C); chu khac thi giu nguyen chu ben trong (nhu \text{}) ---
+  [/\\mathbb\{([^{}]*)\}/g, (_, x) => ({ R: 'ℝ', N: 'ℕ', Z: 'ℤ', Q: 'ℚ', C: 'ℂ' }[x] || x)],
 
   // --- LaTeX: do (^\circ hoac ^{\circ} hoac \circ don le) ---
   [/\^\{?\\circ\}?/g, '°'],
@@ -49,6 +74,10 @@ const SYMBOL_REPLACEMENTS = [
 
   // --- LaTeX: \widehat{X} -> X voi dau mu ket hop (vi du "B" -> "B̂") ---
   [/\\widehat\{([^{}]*)\}/g, (_, x) => x + '̂'],
+
+  // --- LaTeX: can bac n (\sqrt[3]{x}, \sqrt[5]{x}...) - phai xu ly truoc
+  // \sqrt{...} thuong vi cung bat dau bang "\sqrt" ---
+  [/\\sqrt\[([0-9]+)\]\{([^{}]*)\}/g, (_, n, x) => rootSymbolFor(n) + wrapSqrtContent(x)],
 
   // --- LaTeX: can bac hai (√ + so nguyen thuan, hoac √(...) neu la bieu thuc) ---
   [/\\sqrt\{([^{}]*)\}/g, (_, x) => '√' + wrapSqrtContent(x)],
@@ -74,15 +103,7 @@ const SYMBOL_REPLACEMENTS = [
   [/([a-zA-Z0-9)])\s*\*\s*([a-zA-Z0-9(])/g, '$1 × $2']
 ];
 
-/**
- * Doi cac ky hieu toan hoc go tay bang ASCII (>=, <=>, ^2, sqrt(...), m3...)
- * hoac LaTeX ($...$, \frac, \sqrt, \sin, \widehat, \alpha, \cdot, ^\circ...)
- * sang ky tu Unicode tuong ung de hien thi dung chuan toan hoc thay vi ky
- * hieu lap trinh/ma nguon. Phan so (a/b) giu nguyen dang "a/b" nam ngang vi
- * Unicode khong ho tro xep chong tu/mau tuy y.
- */
-export function formatMathSymbols(text) {
-  if (typeof text !== 'string' || !text) return text;
+function applyReplacements(text) {
   // Chay lap den khi ket qua khong doi them (fixed point): can bac hai long
   // nhau (\sqrt{...\sqrt{...}...}) can nhieu luot vi 1 luot chi giai duoc
   // lop can trong cung, lop can ngoai chi "sach" (het dau ngoac nhon) sau
@@ -93,5 +114,55 @@ export function formatMathSymbols(text) {
     if (next === result) return next;
     result = next;
   }
+  return result;
+}
+
+/**
+ * Doi TOAN BO ky hieu toan hoc (ke ca ben trong $...$) sang ky tu Unicode
+ * phang, dung cho noi dung KHONG the render LaTeX that (vd file Word xuat
+ * ra bang thu vien "docx" - chi la text tinh, khong co KaTeX). Day chinh la
+ * hanh vi day du cua formatMathSymbols() truoc khi co KaTeX; gach ngang cua
+ * can/phan so o day chi la ky tu/dau ngoac, khong phai net ve that.
+ */
+export function latexToPlainText(text) {
+  if (typeof text !== 'string' || !text) return text;
+  return applyReplacements(text);
+}
+
+const MATH_SPAN_RE = /\$[^$]*\$/g;
+
+/**
+ * Doi cac ky hieu toan hoc go tay bang ASCII (>=, <=>, ^2, sqrt(...), m3...)
+ * ben NGOAI dau $...$ sang Unicode, con phan LaTeX BEN TRONG $...$ thi GIU
+ * NGUYEN VEN (ke ca dau $) de tang hien thi (renderMathInline trong
+ * script.js) dua vao KaTeX ve that - KaTeX can cu phap LaTeX goc (\sqrt,
+ * \frac long nhau tuy y...) chu khong phai chuoi Unicode da bi "lam phang"
+ * mat het cau truc long nhau (day chinh la nguyen nhan cac loi can/phan so
+ * ghep sai truoc day: 2 buoc doan mau bang regex giam chan nhau tren cung 1
+ * chuoi phang). Neu can ban Unicode/plain-text day du (vd xuat file Word),
+ * dung latexToPlainText() thay vi ham nay.
+ */
+export function formatMathSymbols(text) {
+  if (typeof text !== 'string' || !text) return text;
+
+  // Buoc 1: boc moi cau truc toan 2 chieu (can, phan so, can bac n...) nam
+  // ngoai $...$ thanh $...$ LaTeX chuan (xem mathToLatex.js). Sau buoc nay
+  // ky hieu can/phan so KHONG con o dang Unicode "lam phang" o vung van xuoi
+  // - chung da la LaTeX trong $...$ de KaTeX/JLaTeXMath ve that.
+  const promoted = promoteStructuralMath(text);
+
+  // Buoc 2: lam dep cac ky hieu 1 HANG con lai (^2 -> ², <= -> ≤, a*b ->
+  // a×b, \alpha -> α...) - CHI o vung ngoai $...$; phan trong $...$ giu
+  // nguyen ven cho KaTeX.
+  let result = '';
+  let lastIndex = 0;
+  let match;
+  MATH_SPAN_RE.lastIndex = 0;
+  while ((match = MATH_SPAN_RE.exec(promoted)) !== null) {
+    if (match.index > lastIndex) result += applyReplacements(promoted.slice(lastIndex, match.index));
+    result += match[0];
+    lastIndex = MATH_SPAN_RE.lastIndex;
+  }
+  result += applyReplacements(promoted.slice(lastIndex));
   return result;
 }

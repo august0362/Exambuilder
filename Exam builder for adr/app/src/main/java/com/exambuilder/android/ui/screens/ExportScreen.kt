@@ -1,72 +1,131 @@
 package com.exambuilder.android.ui.screens
 
-import android.content.Intent
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.PictureAsPdf
-import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.exambuilder.android.export.DOCX_MIME
+import com.exambuilder.android.export.DocxExporter
+import com.exambuilder.android.export.PDF_MIME
 import com.exambuilder.android.export.PdfExporter
+import com.exambuilder.android.export.shareExportedFile
 import com.exambuilder.android.viewmodel.ExamViewModel
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
- * Export trigger screen: renders the current exam to an A4 PDF
- * (see [PdfExporter]) and hands the result to the system share sheet so it
- * can be sent, opened, or saved via any installed app.
+ * Export centre: renders the current exam to a print-ready A4 PDF
+ * ([PdfExporter]) or a Word .docx ([DocxExporter]) and hands the result to
+ * the system share sheet. A student-mode switch strips answers and solutions.
  */
 @Composable
 fun ExportScreen(viewModel: ExamViewModel) {
     val context = LocalContext.current
-    var status by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
     val exam = viewModel.exam
+    val questionCount = viewModel.questionCount()
 
-    Column(
-        Modifier.fillMaxSize().padding(24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
-    ) {
-        Icon(Icons.Default.PictureAsPdf, contentDescription = null, modifier = Modifier.size(64.dp))
-        Text("${exam.title.ifBlank { "Đề kiểm tra" }} — ${viewModel.questionCount()} câu hỏi", modifier = Modifier.padding(vertical = 16.dp))
+    var studentMode by rememberSaveable { mutableStateOf(false) }
+    var busy by remember { mutableStateOf(false) }
+    var status by remember { mutableStateOf<String?>(null) }
 
-        Button(
-            enabled = viewModel.questionCount() > 0,
-            onClick = {
-                try {
-                    val uri = PdfExporter.export(context, exam)
-                    status = "Đã tạo PDF thành công."
-                    val shareIntent = Intent(Intent.ACTION_SEND).apply {
-                        type = "application/pdf"
-                        putExtra(Intent.EXTRA_STREAM, uri)
-                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                    }
-                    context.startActivity(Intent.createChooser(shareIntent, "Chia sẻ / Lưu PDF"))
-                } catch (e: Exception) {
-                    status = "Lỗi xuất PDF: ${e.message}"
+    fun export(pdf: Boolean) {
+        if (busy) return
+        busy = true
+        status = null
+        scope.launch {
+            val outcome = runCatching {
+                withContext(Dispatchers.IO) {
+                    if (pdf) PdfExporter.export(context, exam, studentMode) to PDF_MIME
+                    else DocxExporter.export(context, exam, studentMode) to DOCX_MIME
                 }
             }
-        ) {
-            Icon(Icons.Default.Share, contentDescription = null)
-            Text(" Xuất & Chia sẻ PDF", modifier = Modifier.padding(start = 8.dp))
+            busy = false
+            outcome
+                .onSuccess { (uri, mime) ->
+                    status = "Đã tạo tệp. Chọn nơi lưu / chia sẻ."
+                    shareExportedFile(context, uri, mime)
+                }
+                .onFailure { status = "Lỗi khi xuất: ${it.message ?: "không rõ"}" }
+        }
+    }
+
+    Column(
+        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text("Xuất đề", style = MaterialTheme.typography.titleLarge)
+        Text(
+            "${exam.title.ifBlank { "Đề kiểm tra" }} — $questionCount câu",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+
+        Card(Modifier.fillMaxWidth()) {
+            Row(
+                Modifier.fillMaxWidth().padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text("Chế độ học sinh", fontWeight = FontWeight.Medium)
+                    Text(
+                        "Ẩn đáp án, lời giải và bảng đáp án.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Switch(checked = studentMode, onCheckedChange = { studentMode = it })
+            }
         }
 
-        status?.let {
-            Text(it, modifier = Modifier.padding(top = 12.dp), style = MaterialTheme.typography.bodyMedium)
+        Button(
+            onClick = { export(pdf = true) },
+            enabled = questionCount > 0 && !busy,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Icon(Icons.Default.PictureAsPdf, contentDescription = null)
+            Text("  Xuất PDF")
         }
+        OutlinedButton(
+            onClick = { export(pdf = false) },
+            enabled = questionCount > 0 && !busy,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Icon(Icons.Default.Description, contentDescription = null)
+            Text("  Xuất Word (.docx)")
+        }
+
+        if (busy) CircularProgressIndicator()
+        status?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
     }
 }

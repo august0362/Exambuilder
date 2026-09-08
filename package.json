@@ -6,12 +6,16 @@
   "scripts": {
     "start": "node backend/server.js",
     "test": "jest",
-    "test:coverage": "jest --coverage --collectCoverageFrom=\"backend/**/*.js\" --coveragePathIgnorePatterns=\"server.js|index.js\""
+    "test:coverage": "jest --coverage --collectCoverageFrom=\"backend/**/*.js\" --coveragePathIgnorePatterns=\"server.js|index.js\"",
+    "gen:prompt": "node tools/gen-prompt-module.js"
   },
   "dependencies": {
     "docx": "^9.7.1",
     "express": "^4.19.2",
+    "katex": "^0.18.4",
     "mammoth": "^1.12.1",
+    "multer": "^2.2.0",
+    "node-llama-cpp": "^3.20.0",
     "sqlite": "^5.1.1",
     "sqlite3": "^5.1.7"
   },
@@ -21,5 +25,10 @@
     "babel-jest": "^30.4.1",
     "jest": "^30.4.2",
     "supertest": "^7.2.2"
+  },
+  "allowScripts": {
+    "node-llama-cpp@3.20.0": true,
+    "sqlite3@5.1.7": true,
+    "unrs-resolver@1.12.2": true
   }
 }

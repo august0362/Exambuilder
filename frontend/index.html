@@ -3,29 +3,63 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<!-- Ứng dụng tự quản lý màu qua theme -> chặn trình duyệt tự "ép tối" (Auto Dark Mode).
+     Theme tối (midnight/pine) tự set color-scheme: dark ở CSS, không phụ thuộc dòng này. -->
+<meta name="color-scheme" content="light" />
 <title>ExamBuilder - Tạo Đề Kiểm Tra</title>
 <link rel="stylesheet" href="style.css" />
+<link rel="stylesheet" href="/vendor/katex/katex.min.css" />
+<script>
+  // Áp dụng theme + cỡ chữ đã lưu TRƯỚC khi vẽ (tránh nháy màu).
+  // THÊM THEME MỚI: chỉ cần (1) khối :root[data-theme="ten"] trong style.css và
+  // (2) 1 nút .theme-card trong #themeGrid bên dưới — không phải sửa file này.
+  (function () {
+    try {
+      // Đổi tên id cũ -> id mới (giữ lựa chọn của người dùng khi bạn đổi tên theme).
+      var MIGRATE = { blue: 'cold', teal: 'ocean', forest: 'meadow', amber: 'summer', violet: 'blossom' };
+      var DARK_DEFAULT = 'midnight';
+      var r = document.documentElement;
+      var t = localStorage.getItem('eb_theme');
+      if (MIGRATE[t]) { t = MIGRATE[t]; localStorage.setItem('eb_theme', t); }
+      if (localStorage.getItem('eb_mode') === 'dark') {   // bỏ công tắc "chế độ tối" cũ
+        if (t !== 'midnight' && t !== 'pine') t = DARK_DEFAULT;
+        localStorage.setItem('eb_theme', t);
+        localStorage.removeItem('eb_mode');
+      }
+      // id lạ (gõ sai) chỉ hiển thị màu mặc định — vô hại; danh sách hợp lệ do
+      // script.js kiểm lại theo các nút trong #themeGrid.
+      if (t && t !== 'cold' && /^[a-z][a-z0-9-]*$/.test(t)) r.dataset.theme = t;
+      var sc = parseFloat(localStorage.getItem('eb_uiScale'));
+      if (sc && sc !== 1) r.style.setProperty('--ui-scale', String(sc));
+    } catch (e) {}
+  })();
+</script>
 </head>
 <body>
 
 <header class="app-header no-print">
   <h1>ExamBuilder</h1>
   <div class="toolbar" id="toolbar">
-    <label class="switch">
-      <input type="checkbox" id="studentModeToggle" />
-      <span class="switch-track"><span class="switch-thumb"></span></span>
-      <span class="switch-text">Chế độ Học sinh</span>
-    </label>
-
-    <div class="zoom-controls">
-      <button id="zoomOutBtn" type="button" title="Thu nhỏ">A−</button>
-      <span id="zoomLevelLabel">100%</span>
-      <button id="zoomInBtn" type="button" title="Phóng to">A+</button>
+    <div class="toolbar-group">
+      <label class="switch">
+        <input type="checkbox" id="studentModeToggle" />
+        <span class="switch-track"><span class="switch-thumb"></span></span>
+        <span class="switch-text">Chế độ Học sinh</span>
+      </label>
+      <div class="zoom-controls">
+        <button id="zoomOutBtn" type="button" title="Thu nhỏ">A−</button>
+        <span id="zoomLevelLabel">100%</span>
+        <button id="zoomInBtn" type="button" title="Phóng to">A+</button>
+      </div>
     </div>
 
-    <button id="shareBtn" type="button" class="tool-btn" disabled>Tạo Link Chia Sẻ</button>
-    <button id="exportPdfBtn" type="button" class="tool-btn" disabled>Xuất PDF</button>
-    <button id="exportWordBtn" type="button" class="tool-btn" disabled>Xuất Word</button>
+    <div class="toolbar-group">
+      <button id="shareBtn" type="button" class="tool-btn" disabled>Tạo Link Chia Sẻ</button>
+      <button id="exportPdfBtn" type="button" class="tool-btn" disabled>Xuất PDF</button>
+      <button id="exportWordBtn" type="button" class="tool-btn" disabled>Xuất Word</button>
+      <button id="libraryBtn" type="button" class="tool-btn">📚 Lịch sử</button>
+      <button id="settingsBtn" type="button" class="tool-btn">⚙️ Cài đặt</button>
+    </div>
   </div>
 </header>
 
@@ -60,6 +94,7 @@
       <button class="tab-btn active" data-tab="text" type="button">Dán văn bản</button>
       <button class="tab-btn" data-tab="upload" type="button">Tải file</button>
       <button class="tab-btn" data-tab="form" type="button">Nhập Form</button>
+      <button class="tab-btn" data-tab="auto" type="button">Sinh đề tự động</button>
     </div>
 
     <div class="tab-content active" id="tab-text">
@@ -112,6 +147,75 @@
       </div>
 
       <ul id="formQuestionList" class="form-question-list"></ul>
+    </div>
+
+    <div class="tab-content" id="tab-auto">
+      <label class="field-label">Model
+        <select id="autoModelSelect">
+          <option value="">— Chưa có model, vào Cài đặt để thêm —</option>
+        </select>
+      </label>
+      <label class="field-label">Chủ đề (dùng khi không chọn tài liệu, hoặc bổ sung ngữ cảnh)
+        <input type="text" id="autoTopicInput" placeholder="VD: Toán 10 - Hàm số bậc nhất" />
+      </label>
+      <label class="field-label">Tài liệu tham khảo (tùy chọn)
+        <select id="autoDocSelect">
+          <option value="">— Không dùng tài liệu —</option>
+        </select>
+      </label>
+      <div id="autoSectionCheckboxes" class="auto-section-checkboxes"></div>
+
+      <p class="hint">Số lượng câu hỏi theo loại × mức độ (để trống hoặc 0 = không sinh loại đó):</p>
+      <table class="auto-spec-table" id="autoSpecTable">
+        <thead>
+          <tr><th></th><th>NB</th><th>TH</th><th>VD</th><th>VDC</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <th>Trắc nghiệm</th>
+            <td><input type="number" min="0" value="0" data-loai="TN" data-muc-do="Nhan_Biet" /></td>
+            <td><input type="number" min="0" value="0" data-loai="TN" data-muc-do="Thong_Hieu" /></td>
+            <td><input type="number" min="0" value="0" data-loai="TN" data-muc-do="Van_Dung" /></td>
+            <td><input type="number" min="0" value="0" data-loai="TN" data-muc-do="Van_Dung_Cao" /></td>
+          </tr>
+          <tr>
+            <th>Đúng/Sai</th>
+            <td><input type="number" min="0" value="0" data-loai="DUNG_SAI" data-muc-do="Nhan_Biet" /></td>
+            <td><input type="number" min="0" value="0" data-loai="DUNG_SAI" data-muc-do="Thong_Hieu" /></td>
+            <td><input type="number" min="0" value="0" data-loai="DUNG_SAI" data-muc-do="Van_Dung" /></td>
+            <td><input type="number" min="0" value="0" data-loai="DUNG_SAI" data-muc-do="Van_Dung_Cao" /></td>
+          </tr>
+          <tr>
+            <th>Điền từ</th>
+            <td><input type="number" min="0" value="0" data-loai="DIEN_TU" data-muc-do="Nhan_Biet" /></td>
+            <td><input type="number" min="0" value="0" data-loai="DIEN_TU" data-muc-do="Thong_Hieu" /></td>
+            <td><input type="number" min="0" value="0" data-loai="DIEN_TU" data-muc-do="Van_Dung" /></td>
+            <td><input type="number" min="0" value="0" data-loai="DIEN_TU" data-muc-do="Van_Dung_Cao" /></td>
+          </tr>
+          <tr>
+            <th>Tự luận</th>
+            <td><input type="number" min="0" value="0" data-loai="TU_LUAN" data-muc-do="Nhan_Biet" /></td>
+            <td><input type="number" min="0" value="0" data-loai="TU_LUAN" data-muc-do="Thong_Hieu" /></td>
+            <td><input type="number" min="0" value="0" data-loai="TU_LUAN" data-muc-do="Van_Dung" /></td>
+            <td><input type="number" min="0" value="0" data-loai="TU_LUAN" data-muc-do="Van_Dung_Cao" /></td>
+          </tr>
+        </tbody>
+      </table>
+
+      <button id="autoGenerateBtn" type="button" class="primary-btn">🚀 Sinh đề tự động</button>
+      <p class="hint" id="autoGenerateStatus"></p>
+
+      <details class="prompt-accordion" id="resourceLibraryAccordion">
+        <summary>📚 Quản lý thư viện tài liệu</summary>
+        <div class="prompt-accordion-body">
+          <div class="meta-row">
+            <input type="text" id="newDocTitle" placeholder="Tên tài liệu (VD: SGK Toán 10 - Chương 1)" />
+            <input type="text" id="newDocSubject" placeholder="Môn học" />
+          </div>
+          <button id="addDocBtn" type="button" class="secondary-btn">+ Tạo tài liệu</button>
+          <div id="docListForSections"></div>
+        </div>
+      </details>
     </div>
 
     <button id="generateBtn" type="button" class="primary-btn">Sinh Đề Kiểm Tra</button>
@@ -220,8 +324,226 @@
   </div>
 </div>
 
+<div class="modal-overlay no-print" id="settingsModal">
+  <div class="modal modal-wide">
+    <h3>⚙️ Cài đặt</h3>
+
+    <h4>🎨 Giao diện</h4>
+    <div class="appearance-settings">
+      <span class="appearance-label">Chủ đề màu</span>
+      <div class="theme-grid" id="themeGrid">
+        <button type="button" class="theme-card" data-theme="cold">
+          <span class="theme-card-preview" data-p="cold"><span class="tcp-bar"></span><span class="tcp-dot"></span></span>
+          <span class="theme-card-name">Xanh lạnh</span>
+        </button>
+        <button type="button" class="theme-card" data-theme="ocean">
+          <span class="theme-card-preview" data-p="ocean"><span class="tcp-bar"></span><span class="tcp-dot"></span></span>
+          <span class="theme-card-name">Biển</span>
+        </button>
+        <button type="button" class="theme-card" data-theme="meadow">
+          <span class="theme-card-preview" data-p="meadow"><span class="tcp-bar"></span><span class="tcp-dot"></span></span>
+          <span class="theme-card-name">Đồng cỏ</span>
+        </button>
+        <button type="button" class="theme-card" data-theme="blossom">
+          <span class="theme-card-preview" data-p="blossom"><span class="tcp-bar"></span><span class="tcp-dot"></span></span>
+          <span class="theme-card-name">Oải hương</span>
+        </button>
+        <button type="button" class="theme-card" data-theme="sorbet">
+          <span class="theme-card-preview" data-p="sorbet"><span class="tcp-bar"></span><span class="tcp-dot"></span></span>
+          <span class="theme-card-name">Kem trái cây</span>
+        </button>
+        <button type="button" class="theme-card" data-theme="daylight">
+          <span class="theme-card-preview" data-p="daylight"><span class="tcp-bar"></span><span class="tcp-dot"></span></span>
+          <span class="theme-card-name">Ban ngày</span>
+        </button>
+        <button type="button" class="theme-card" data-theme="summer">
+          <span class="theme-card-preview" data-p="summer"><span class="tcp-bar"></span><span class="tcp-dot"></span></span>
+          <span class="theme-card-name">Hè</span>
+        </button>
+        <button type="button" class="theme-card" data-theme="fall">
+          <span class="theme-card-preview" data-p="fall"><span class="tcp-bar"></span><span class="tcp-dot"></span></span>
+          <span class="theme-card-name">Thu</span>
+        </button>
+        <button type="button" class="theme-card" data-theme="winter">
+          <span class="theme-card-preview" data-p="winter"><span class="tcp-bar"></span><span class="tcp-dot"></span></span>
+          <span class="theme-card-name">Đông</span>
+        </button>
+        <button type="button" class="theme-card" data-theme="midnight">
+          <span class="theme-card-preview" data-p="midnight"><span class="tcp-bar"></span><span class="tcp-dot"></span></span>
+          <span class="theme-card-name">Xanh đêm 🌙</span>
+        </button>
+        <button type="button" class="theme-card" data-theme="pine">
+          <span class="theme-card-preview" data-p="pine"><span class="tcp-bar"></span><span class="tcp-dot"></span></span>
+          <span class="theme-card-name">Rừng đêm 🌙</span>
+        </button>
+        <button type="button" class="theme-card" data-theme="grape">
+          <span class="theme-card-preview" data-p="grape"><span class="tcp-bar"></span><span class="tcp-dot"></span></span>
+          <span class="theme-card-name">Nho</span>
+        </button>
+        <button type="button" class="theme-card" data-theme="plum">
+          <span class="theme-card-preview" data-p="plum"><span class="tcp-bar"></span><span class="tcp-dot"></span></span>
+          <span class="theme-card-name">Mận</span>
+        </button>
+        <button type="button" class="theme-card" data-theme="mocha">
+          <span class="theme-card-preview" data-p="mocha"><span class="tcp-bar"></span><span class="tcp-dot"></span></span>
+          <span class="theme-card-name">Cà phê</span>
+        </button>
+        <button type="button" class="theme-card" data-theme="quartz">
+          <span class="theme-card-preview" data-p="quartz"><span class="tcp-bar"></span><span class="tcp-dot"></span></span>
+          <span class="theme-card-name">Thạch anh</span>
+        </button>
+        <button type="button" class="theme-card" data-theme="peach">
+          <span class="theme-card-preview" data-p="peach"><span class="tcp-bar"></span><span class="tcp-dot"></span></span>
+          <span class="theme-card-name">Đào</span>
+        </button>
+        <button type="button" class="theme-card" data-theme="rose">
+          <span class="theme-card-preview" data-p="rose"><span class="tcp-bar"></span><span class="tcp-dot"></span></span>
+          <span class="theme-card-name">Hoa hồng</span>
+        </button>
+        <button type="button" class="theme-card" data-theme="honey">
+          <span class="theme-card-preview" data-p="honey"><span class="tcp-bar"></span><span class="tcp-dot"></span></span>
+          <span class="theme-card-name">Mật ong</span>
+        </button>
+      </div>
+
+      <div class="appearance-row">
+        <span class="appearance-label">Cỡ chữ</span>
+        <div class="font-size-group" id="fontSizeGroup">
+          <button type="button" data-scale="0.9">Nhỏ</button>
+          <button type="button" data-scale="1">Vừa</button>
+          <button type="button" data-scale="1.15">Lớn</button>
+          <button type="button" data-scale="1.3">Rất lớn</button>
+        </div>
+      </div>
+    </div>
+
+    <h4>🔑 API Key LLM (Cloud)</h4>
+    <div id="apiKeyRows" class="settings-provider-rows">
+      <div class="settings-provider-row" data-provider="openai">
+        <span class="provider-label">OpenAI</span>
+        <input type="password" class="provider-key-input" placeholder="sk-..." />
+        <span class="provider-status hint"></span>
+        <button type="button" class="secondary-btn save-key-btn">Lưu</button>
+      </div>
+      <div class="settings-provider-row" data-provider="anthropic">
+        <span class="provider-label">Anthropic</span>
+        <input type="password" class="provider-key-input" placeholder="sk-ant-..." />
+        <span class="provider-status hint"></span>
+        <button type="button" class="secondary-btn save-key-btn">Lưu</button>
+      </div>
+      <div class="settings-provider-row" data-provider="gemini">
+        <span class="provider-label">Google Gemini</span>
+        <input type="password" class="provider-key-input" placeholder="AIza..." />
+        <span class="provider-status hint"></span>
+        <button type="button" class="secondary-btn save-key-btn">Lưu</button>
+      </div>
+    </div>
+
+    <h4>Model Cloud đã đăng ký</h4>
+    <div class="meta-row">
+      <select id="newCloudModelProvider">
+        <option value="openai">OpenAI</option>
+        <option value="anthropic">Anthropic</option>
+        <option value="gemini">Gemini</option>
+      </select>
+      <input type="text" id="newCloudModelName" placeholder="Tên model API (vd: gpt-4o-mini)" />
+      <input type="text" id="newCloudModelDisplay" placeholder="Tên hiển thị" />
+    </div>
+    <button id="addCloudModelBtn" type="button" class="secondary-btn">+ Thêm model cloud</button>
+
+    <h4>Model cục bộ (.gguf)</h4>
+    <p class="hint">Chỉ nhận file .gguf (llama.cpp). File lớn, cần đủ RAM để nạp model, tốc độ sinh chậm hơn cloud.</p>
+    <input type="file" id="localModelFile" accept=".gguf" />
+    <input type="text" id="localModelDisplay" placeholder="Tên hiển thị (tùy chọn)" />
+    <button id="uploadLocalModelBtn" type="button" class="secondary-btn">Tải lên</button>
+    <p class="hint" id="uploadLocalModelStatus"></p>
+
+    <h4>Danh sách model hiện có</h4>
+    <ul id="modelManagerList" class="form-question-list"></ul>
+
+    <div class="modal-actions">
+      <button id="closeSettingsModalBtn" type="button" class="secondary-btn">Đóng</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay no-print" id="libraryModal">
+  <div class="modal modal-wide">
+    <h3>📚 Lịch sử đề đã soạn</h3>
+    <p class="hint">
+      Mọi đề tự động lưu tại đây (trên máy chủ ứng dụng) ngay sau khi bấm <strong>“Sinh Đề Kiểm Tra”</strong>.
+      Bấm <strong>Mở</strong> để soạn tiếp một đề cũ.
+    </p>
+    <ul id="libraryExamList" class="form-question-list"></ul>
+    <p class="hint library-item-empty" id="libraryEmptyHint">
+      Chưa có đề nào. Hãy đóng cửa sổ này, nhập dữ liệu và bấm “Sinh Đề Kiểm Tra” — đề sẽ tự xuất hiện ở đây.
+    </p>
+
+    <details class="sync-details" id="syncDetails">
+      <summary>☁️ Đồng bộ sang thiết bị khác (GitHub Gist)</summary>
+      <div class="sync-details-body">
+        <p class="hint">
+          Dùng chung 1 <strong>Personal Access Token</strong> (chỉ cần quyền <code>gist</code>) và 1
+          <strong>Gist ID</strong> cho mọi thiết bị.
+        </p>
+
+        <div class="sync-status-rows">
+          <div class="sync-status-row">
+            <span class="sync-status-key">Token GitHub</span>
+            <span class="sync-state" id="tokenStateLabel">Chưa có</span>
+          </div>
+          <div class="sync-status-row">
+            <span class="sync-status-key">Gist ID</span>
+            <span class="sync-state" id="gistStateLabel">Chưa có</span>
+          </div>
+        </div>
+
+        <div class="sync-actions">
+          <button id="syncPullBtn" type="button" class="primary-btn">⬇️ Kéo về (Pull)</button>
+          <button id="syncPushBtn" type="button" class="secondary-btn">⬆️ Đẩy lên (Push)</button>
+        </div>
+        <div class="sync-actions">
+          <button id="changeTokenBtn" type="button" class="secondary-btn">🔑 Thay đổi Token</button>
+          <button id="changeGistBtn" type="button" class="secondary-btn">🆔 Thay đổi Gist ID</button>
+        </div>
+
+        <div class="sync-subpanel form-hidden" id="changeTokenPanel">
+          <label class="field-label">Dán Token GitHub mới (quyền <code>gist</code>)
+            <input type="password" id="ghTokenInput" placeholder="ghp_... / github_pat_..." />
+          </label>
+          <div class="sync-actions">
+            <button id="saveTokenBtn" type="button" class="primary-btn">Lưu Token</button>
+            <button id="cancelTokenBtn" type="button" class="secondary-btn">Huỷ</button>
+          </div>
+        </div>
+
+        <div class="sync-subpanel form-hidden" id="changeGistPanel">
+          <p class="hint"><strong>Cách 1</strong> — Tạo Gist mới (thiết bị đầu tiên; cần đã lưu Token):</p>
+          <button id="createGistBtn" type="button" class="secondary-btn">🆕 Tạo Gist ID mới</button>
+          <p class="hint"><strong>Cách 2</strong> — Dùng Gist ID đã có (copy từ thiết bị khác):</p>
+          <label class="field-label">Gist ID
+            <input type="text" id="gistIdInput" placeholder="vd: 1a2b3c4d5e..." />
+          </label>
+          <div class="sync-actions">
+            <button id="saveGistIdBtn" type="button" class="primary-btn">Lưu Gist ID</button>
+            <button id="cancelGistBtn" type="button" class="secondary-btn">Huỷ</button>
+          </div>
+        </div>
+
+        <p class="hint" id="syncStatus"></p>
+        <p class="hint" id="syncMeta"></p>
+      </div>
+    </details>
+
+    <div class="modal-actions">
+      <button id="closeLibraryModalBtn" type="button" class="secondary-btn">Đóng</button>
+    </div>
+  </div>
+</div>
+
 <script src="/vendor/docx/index.umd.cjs"></script>
 <script src="/vendor/mammoth/mammoth.browser.js"></script>
+<script src="/vendor/katex/katex.min.js"></script>
 <script type="module" src="script.js"></script>
 </body>
 </html>

@@ -1,106 +1,297 @@
 package com.exambuilder.android.export
 
 import android.content.Context
+import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.RectF
+import android.graphics.Typeface
 import android.graphics.pdf.PdfDocument
 import android.net.Uri
 import androidx.core.content.FileProvider
+import com.exambuilder.android.math.LatexImage
+import com.exambuilder.android.math.MathConvert
+import com.exambuilder.android.math.MathNode
+import com.exambuilder.android.math.parseMathNodes
 import com.exambuilder.android.model.Exam
+import com.exambuilder.android.model.Question
 import com.exambuilder.android.model.QuestionType
 import java.io.File
 import java.io.FileOutputStream
 
+// A4 at 72 pt/inch.
+private const val PAGE_W = 595
+private const val PAGE_H = 842
+private const val MARGIN = 54f
+private const val LINE = 17f
+
+// JLaTeXMath is rasterised at this multiple of the target text size for a
+// crisper result once the PDF is zoomed / printed.
+private const val FORMULA_SCALE = 2.5f
+
+private fun paint(sizePt: Float, bold: Boolean = false, color: Int = Color.BLACK) = Paint().apply {
+    isAntiAlias = true
+    textSize = sizePt
+    this.color = color
+    if (bold) typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+}
+
+private val TITLE = paint(17f, bold = true)
+private val SUBTITLE = paint(11f, color = 0xFF475569.toInt())
+private val HEADING = paint(13f, bold = true, color = 0xFF1E293B.toInt())
+private val BODY = paint(11.5f)
+private val BODY_BOLD = paint(11.5f, bold = true)
+private val ANSWER = paint(11f, color = 0xFF15803D.toInt())
+private val EXPLAIN = paint(10.5f, color = 0xFF92400E.toInt())
+private val MUTED = paint(9.5f, color = 0xFF94A3B8.toInt())
+
 /**
- * Renders an [Exam] to a multi-page A4 PDF using the platform PdfDocument
- * API (no third-party PDF library needed). Mirrors the pagination logic of
- * the web app's print stylesheet (frontend/style.css @media print) but
- * draws text directly since there is no HTML layout engine here.
+ * Renders an [Exam] to a clean multi-page A4 PDF using the platform
+ * [PdfDocument] API (no third-party PDF dependency). Formulas (`$…$`,
+ * `\begin{cases}`, …) are rendered with JLaTeXMath and drawn as images; the
+ * rest of the text flows around them.
+ *
+ *  - [studentMode] `true`  -> exam paper only (no answers, no explanations).
+ *  - [studentMode] `false` -> teacher copy: inline answers, explanations and
+ *    a compact answer key at the end.
  */
 object PdfExporter {
 
-    // A4 at 72pt/inch: 210mm x 297mm ~= 595 x 842 points.
-    private const val PAGE_WIDTH = 595
-    private const val PAGE_HEIGHT = 842
-    private const val MARGIN = 56f
-    private const val LINE_HEIGHT = 18f
+    fun export(context: Context, exam: Exam, studentMode: Boolean = false): Uri {
+        val doc = PdfDocument()
+        val w = PageWriter(doc)
 
-    fun export(context: Context, exam: Exam): Uri {
-        val document = PdfDocument()
-        val titlePaint = Paint().apply { textSize = 16f; isFakeBoldText = true }
-        val bodyPaint = Paint().apply { textSize = 12f }
-        val mutedPaint = Paint().apply { textSize = 11f; color = 0xFF64748B.toInt() }
-
-        var page = document.startPage(PdfDocument.PageInfo.Builder(PAGE_WIDTH, PAGE_HEIGHT, document.pages.size + 1).create())
-        var canvas = page.canvas
-        var y = MARGIN
-
-        fun newPageIfNeeded(extra: Float = LINE_HEIGHT) {
-            if (y + extra > PAGE_HEIGHT - MARGIN) {
-                document.finishPage(page)
-                page = document.startPage(PdfDocument.PageInfo.Builder(PAGE_WIDTH, PAGE_HEIGHT, document.pages.size + 1).create())
-                canvas = page.canvas
-                y = MARGIN
-            }
+        if (exam.schoolHeader.isNotBlank()) w.centered(exam.schoolHeader, SUBTITLE)
+        w.centered(exam.title.ifBlank { "Đề kiểm tra" }, TITLE)
+        val meta = buildList {
+            if (exam.subject.isNotBlank()) add("Môn: ${exam.subject}")
+            exam.durationMinutes?.let { add("Thời gian: $it phút") }
+            add("${exam.numberedQuestions().size} câu")
         }
-
-        canvas.drawText(exam.title.ifBlank { "Đề kiểm tra" }, MARGIN, y, titlePaint)
-        y += LINE_HEIGHT * 1.5f
-        if (exam.subject.isNotBlank()) {
-            canvas.drawText(exam.subject, MARGIN, y, mutedPaint)
-            y += LINE_HEIGHT
-        }
-        y += LINE_HEIGHT * 0.5f
+        if (meta.isNotEmpty()) w.centered(meta.joinToString("    "), SUBTITLE)
+        w.gap(0.6f)
+        w.rule()
+        w.gap(0.4f)
 
         var counter = 0
         exam.blocks.forEach { block ->
-            newPageIfNeeded()
-            canvas.drawText(block.blockTitle, MARGIN, y, titlePaint)
-            y += LINE_HEIGHT * 1.3f
+            w.ensure(LINE * 3)
+            w.line(block.blockTitle, HEADING)
+            w.gap(0.2f)
 
             block.questions.forEach { q ->
                 counter++
-                newPageIfNeeded()
-                wrapText("Câu $counter. ${q.content}", bodyPaint, PAGE_WIDTH - 2 * MARGIN).forEach { line ->
-                    newPageIfNeeded()
-                    canvas.drawText(line, MARGIN, y, bodyPaint)
-                    y += LINE_HEIGHT
-                }
-                if (q.questionType == QuestionType.MCQ) {
-                    q.options.forEach { opt ->
-                        newPageIfNeeded()
-                        val mark = if (opt.isCorrect) " (Đáp án đúng)" else ""
-                        canvas.drawText("   ${opt.optionKey}. ${opt.optionText}$mark", MARGIN, y, bodyPaint)
-                        y += LINE_HEIGHT
+                w.ensure(LINE * 3)
+                w.flow("Câu $counter. ", BODY_BOLD, q.content, BODY)
+
+                when (q.questionType) {
+                    QuestionType.MCQ -> q.options.forEach { opt ->
+                        val correct = !studentMode && opt.isCorrect
+                        w.flow(
+                            "     ${opt.optionKey}. ",
+                            if (correct) BODY_BOLD else BODY,
+                            opt.optionText + if (correct) "   ✓" else "",
+                            if (correct) BODY_BOLD else BODY,
+                        )
+                    }
+                    QuestionType.TRUE_FALSE -> {
+                        w.line("     ☐ Đúng        ☐ Sai", BODY)
+                        if (!studentMode) w.line("     Đáp án: ${trueFalseLabel(q.correctAnswer)}", ANSWER)
+                    }
+                    QuestionType.FILL_BLANK -> {
+                        w.line("     Trả lời: ..................................................", BODY)
+                        if (!studentMode && !q.correctAnswer.isNullOrBlank()) {
+                            w.flow("     Đáp án: ", ANSWER, q.correctAnswer, ANSWER)
+                        }
+                    }
+                    QuestionType.ESSAY -> repeat(q.draftLinesCount.coerceIn(0, 30)) {
+                        w.line("     .............................................................................", MUTED)
                     }
                 }
-                y += LINE_HEIGHT * 0.5f
+
+                if (!studentMode && !q.explanation.isNullOrBlank()) {
+                    splitSentences(q.explanation).forEachIndexed { i, sentence ->
+                        w.flow(if (i == 0) "     Lời giải: " else "        ", EXPLAIN, sentence, EXPLAIN)
+                    }
+                }
+                w.gap(0.4f)
             }
         }
-        document.finishPage(page)
 
-        val outFile = File(context.getExternalFilesDir("exports"), "${exam.title.ifBlank { "de-kiem-tra" }.replace(Regex("\\s+"), "_")}.pdf")
-        outFile.parentFile?.mkdirs()
-        FileOutputStream(outFile).use { document.writeTo(it) }
-        document.close()
+        if (!studentMode) {
+            val keyed = exam.numberedQuestions().filter { (_, q) -> !answerText(q).isNullOrBlank() }
+            if (keyed.isNotEmpty()) {
+                w.ensure(LINE * 4)
+                w.gap(0.4f)
+                w.rule()
+                w.line("BẢNG ĐÁP ÁN", HEADING)
+                keyed.chunked(8).forEach { row ->
+                    w.line(row.joinToString("    ") { (n, q) -> "$n. ${answerText(q)}" }, BODY)
+                }
+            }
+        }
 
-        return FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", outFile)
+        return w.finish(context, exam.exportFileStem() + ".pdf")
     }
 
-    /** Naive word-wrap - no HTML/CSS engine here, so wrapping is measured manually. */
-    private fun wrapText(text: String, paint: Paint, maxWidth: Float): List<String> {
-        val words = text.split(" ")
-        val lines = mutableListOf<String>()
-        var current = StringBuilder()
-        words.forEach { word ->
-            val candidate = if (current.isEmpty()) word else "${current} $word"
-            if (paint.measureText(candidate) > maxWidth && current.isNotEmpty()) {
-                lines.add(current.toString())
-                current = StringBuilder(word)
-            } else {
-                current = StringBuilder(candidate)
+    private fun answerText(q: Question): String? = when (q.questionType) {
+        QuestionType.MCQ -> q.options.firstOrNull { it.isCorrect }?.optionKey ?: q.correctAnswer
+        QuestionType.TRUE_FALSE -> trueFalseLabel(q.correctAnswer)
+        QuestionType.FILL_BLANK -> q.correctAnswer?.let { MathConvert.toPlainText(it) }
+        QuestionType.ESSAY -> null
+    }
+
+    /** One sentence (". " terminated) per line — matches the on-screen preview. */
+    private fun splitSentences(text: String): List<String> =
+        text.split(Regex("(?<=\\.)\\s+(?=\\S)")).map { it.trim() }.filter { it.isNotEmpty() }
+}
+
+/**
+ * Cursor over a growing [PdfDocument]; wraps text to the content width and
+ * starts a new page when the current one is full.
+ */
+private class PageWriter(private val doc: PdfDocument) {
+    private val left = MARGIN
+    private val right = PAGE_W - MARGIN
+    private val contentW = right - left
+    private var page = newPage()
+    private var canvas = page.canvas
+    private var y = MARGIN
+    private var pageNo = 1
+
+    private fun newPage(): PdfDocument.Page =
+        doc.startPage(PdfDocument.PageInfo.Builder(PAGE_W, PAGE_H, doc.pages.size + 1).create())
+
+    fun ensure(extra: Float) {
+        if (y + extra <= PAGE_H - MARGIN) return
+        stampFooter()
+        doc.finishPage(page)
+        page = newPage()
+        canvas = page.canvas
+        y = MARGIN
+        pageNo++
+    }
+
+    private fun stampFooter() {
+        canvas.drawText("Trang $pageNo", PAGE_W / 2f - 18f, PAGE_H - MARGIN + 22f, MUTED)
+    }
+
+    fun gap(lines: Float) {
+        y += LINE * lines
+    }
+
+    fun rule() {
+        ensure(LINE)
+        canvas.drawLine(left, y - LINE * 0.4f, right, y - LINE * 0.4f, MUTED)
+        y += LINE * 0.4f
+    }
+
+    fun centered(text: String, p: Paint) {
+        wrap(text, p, contentW).forEach {
+            ensure(LINE)
+            canvas.drawText(it, (PAGE_W - p.measureText(it)) / 2f, y, p)
+            y += LINE
+        }
+    }
+
+    fun line(text: String, p: Paint) {
+        wrap(text, p, contentW).forEach {
+            ensure(LINE)
+            canvas.drawText(it, left, y, p)
+            y += LINE
+        }
+    }
+
+    /**
+     * Draw [prefix] (in [prefixPaint]) then [text] (in [bodyPaint]) — parsing
+     * `$…$` / `\begin{…}` into JLaTeXMath images and flowing the plain runs
+     * as words, wrapping to the content width. Continuation lines indent to
+     * the prefix width.
+     */
+    fun flow(prefix: String, prefixPaint: Paint, text: String?, bodyPaint: Paint) {
+        ensure(LINE)
+        val indent = prefixPaint.measureText(prefix)
+        canvas.drawText(prefix, left, y, prefixPaint)
+        var x = left + indent
+        var lineExtra = 0f
+
+        fun newline() {
+            y += LINE + lineExtra
+            lineExtra = 0f
+            ensure(LINE)
+            x = left + indent
+        }
+
+        fun drawWords(s: String) {
+            for (word in tokenize(s)) {
+                val wWidth = bodyPaint.measureText(word)
+                if (x + wWidth > right && x > left + indent) newline()
+                canvas.drawText(word, x, y, bodyPaint)
+                x += wWidth
             }
         }
-        if (current.isNotEmpty()) lines.add(current.toString())
-        return lines
+
+        parseMathNodes(text).forEach { node ->
+            when (node) {
+                is MathNode.Text -> drawWords(MathConvert.toPlainText(node.text))
+                is MathNode.Formula -> {
+                    val bmp = LatexImage.bitmap(node.latex, bodyPaint.textSize * FORMULA_SCALE, bodyPaint.color)
+                    if (bmp == null) {
+                        drawWords(MathConvert.toPlainText("$" + node.latex + "$"))
+                    } else {
+                        val tw = bmp.width / FORMULA_SCALE
+                        val th = bmp.height / FORMULA_SCALE
+                        if (x + tw > right && x > left + indent) newline()
+                        val top = y - th * 0.72f
+                        canvas.drawBitmap(bmp, null, RectF(x, top, x + tw, top + th), null)
+                        x += tw + 2f
+                        lineExtra = maxOf(lineExtra, th - LINE)
+                    }
+                }
+            }
+        }
+        y += LINE + lineExtra
+    }
+
+    fun finish(context: Context, fileName: String): Uri {
+        stampFooter()
+        doc.finishPage(page)
+        val out = File(context.getExternalFilesDir("exports"), fileName)
+        out.parentFile?.mkdirs()
+        FileOutputStream(out).use { doc.writeTo(it) }
+        doc.close()
+        return FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", out)
+    }
+
+    /** Split keeping trailing spaces so word widths add up on a line. */
+    private fun tokenize(s: String): List<String> {
+        if (s.isEmpty()) return emptyList()
+        val out = ArrayList<String>()
+        val sb = StringBuilder()
+        for (ch in s) {
+            sb.append(ch)
+            if (ch == ' ') {
+                out.add(sb.toString()); sb.setLength(0)
+            }
+        }
+        if (sb.isNotEmpty()) out.add(sb.toString())
+        return out
+    }
+
+    private fun wrap(text: String, p: Paint, maxWidth: Float): List<String> {
+        val out = ArrayList<String>()
+        text.split("\n").forEach { paragraph ->
+            var current = StringBuilder()
+            for (word in paragraph.split(" ")) {
+                val candidate = if (current.isEmpty()) word else "$current $word"
+                if (p.measureText(candidate) > maxWidth && current.isNotEmpty()) {
+                    out.add(current.toString())
+                    current = StringBuilder(word)
+                } else {
+                    current = StringBuilder(candidate)
+                }
+            }
+            out.add(current.toString())
+        }
+        return out
     }
 }

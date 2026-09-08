@@ -1,41 +1,106 @@
-// Noi dung prompt dung chung voi Gemini_Prompt_Unified.txt o goc du an.
-// Tach rieng thanh module de khu "Prompt mau cho AI" trong UI co the hien
-// thi va copy 1-click ma khong can goi server doc file tinh ngoai frontend/.
-export const EXAM_PROMPT_TEMPLATE = `Bạn là chuyên gia khảo thí và biên soạn đề kiểm tra. Hãy tạo nội dung đề thi theo chủ đề [NHẬP MÔN HỌC/CHỦ ĐỀ Ở ĐÂY] tuân thủ CHÍNH XÁC định dạng cấu trúc dưới đây để phần mềm tự động phân tích. Bắt buộc tạo đủ cả 4 loại câu hỏi: TN, DUNG_SAI, DIEN_TU, TU_LUAN.
+// TU DONG SINH tu Gemini_Prompt_Unified.txt bang tools/gen-prompt-module.js -- DUNG SUA TAY.
+// Nguon duy nhat cua prompt la file .txt o goc du an; sua o do roi chay: npm run gen:prompt
+// Tach thanh module de khu "Prompt mau cho AI" trong UI copy 1-click ma khong goi server.
+export const EXAM_PROMPT_TEMPLATE = `Bạn là chuyên gia khảo thí và biên soạn đề kiểm tra. Hãy soạn nội dung đề kiểm tra về chủ đề [NHẬP MÔN HỌC/CHỦ ĐỀ Ở ĐÂY].
+
+Kết quả của bạn sẽ được một PHẦN MỀM ĐỌC TỰ ĐỘNG, không phải con người đọc. Vì vậy phải tuân thủ TUYỆT ĐỐI định dạng bên dưới. Chỉ cần sai một chi tiết là phần mềm sẽ báo lỗi hoặc hiểu sai nội dung.
+
+━━━━━━━━━━━━━━ QUY TẮC XUẤT KẾT QUẢ (bắt buộc) ━━━━━━━━━━━━━━
+1. CHỈ xuất ra nội dung đề theo đúng định dạng dưới đây. TUYỆT ĐỐI KHÔNG viết lời chào, lời dẫn ("Dưới đây là đề..."), ghi chú, lời kết. KHÔNG đặt kết quả trong khối mã / code block. KHÔNG dùng ký hiệu markdown (dấu sao, dấu thăng, gạch đầu dòng, bảng...).
+2. Đề gồm ĐÚNG 2 phần. Mỗi phần mở đầu bằng một dòng header viết y hệt, chữ IN HOA không dấu, có dấu "=" ở hai đầu, NẰM MỘT MÌNH TRÊN DÒNG và có một dòng trống ngay phía trước:
+      =PHAN_1_TRAC_NGHIEM=   → chứa mọi câu loại TN, DUNG_SAI, DIEN_TU
+      =PHAN_2_TU_LUAN=       → chỉ chứa câu loại TU_LUAN
+3. Mỗi câu hỏi bắt đầu bằng đúng dòng:  [CAU_HOI]  — nằm một mình trên dòng, có một dòng trống ngay phía trước. TUYỆT ĐỐI không nối "[CAU_HOI]" hay dòng header vào cuối dòng "Loi_Giai:" của câu trước.
+4. Mỗi câu chỉ được có DUY NHẤT một dòng "Dap_An:" và DUY NHẤT một dòng "Loi_Giai:". Hãy suy nghĩ và tự kiểm tra thật kỹ TRƯỚC khi viết, rồi chỉ ghi ra đáp án CUỐI CÙNG mà bạn chắc chắn đúng. Không được ghi "Dap_An:" hoặc "Loi_Giai:" lần thứ hai để tự sửa lại trong cùng một câu.
+5. Mỗi trường viết trên MỘT dòng, đúng dạng "Tên_Trường: giá trị". Tên trường viết y hệt (Loai, Muc_Do, De_Bai, Dap_An, Loi_Giai, So_Dong_Nhap) — không dịch, không đổi, không thêm khoảng trắng trong tên. Nội dung "De_Bai:" viết gọn trên một dòng, KHÔNG xuống dòng giữa chừng và KHÔNG bắt đầu bất kỳ dòng nào bằng "A." … "D." hay bằng tên một trường.
+
+━━━━━━━━━━━━━━ TỪ VỰNG BẮT BUỘC ━━━━━━━━━━━━━━
+Trường Loai — viết đúng MỘT trong 4 giá trị:  TN  |  DUNG_SAI  |  DIEN_TU  |  TU_LUAN
+Trường Muc_Do — viết đúng MỘT trong 4 giá trị:  Nhan_Biet  |  Thong_Hieu  |  Van_Dung  |  Van_Dung_Cao
+
+━━━━━━━━━━━━━━ ĐỊNH DẠNG CHI TIẾT TỪNG LOẠI CÂU ━━━━━━━━━━━━━━
+
+• TN — trắc nghiệm 4 lựa chọn:
+  [CAU_HOI]
+  Loai: TN
+  Muc_Do: <mức độ>
+  De_Bai: <nội dung câu hỏi, một dòng>
+  A. <nội dung lựa chọn A>
+  B. <nội dung lựa chọn B>
+  C. <nội dung lựa chọn C>
+  D. <nội dung lựa chọn D>
+  Dap_An: <MỘT chữ cái: A hoặc B hoặc C hoặc D — phải trùng đúng một lựa chọn ở trên>
+  Loi_Giai: <giải thích vì sao đáp án đó đúng>
+  → Bắt buộc đủ 4 lựa chọn, mỗi lựa chọn một dòng riêng, bắt đầu bằng "A. ", "B. ", "C. ", "D. ".
+
+• DUNG_SAI — một nhận định, học sinh xét đúng/sai:
+  [CAU_HOI]
+  Loai: DUNG_SAI
+  Muc_Do: <mức độ>
+  De_Bai: <một mệnh đề/nhận định trọn vẹn>
+  Dap_An: <đúng một từ:  Dung  hoặc  Sai  — không dấu, viết hoa chữ cái đầu>
+  Loi_Giai: <giải thích>
+
+• DIEN_TU — điền vào chỗ trống:
+  [CAU_HOI]
+  Loai: DIEN_TU
+  Muc_Do: <mức độ>
+  De_Bai: <câu có chỗ trống, đánh dấu chỗ trống bằng ba dấu gạch dưới:  ___ >
+  Dap_An: <từ / cụm từ / số cần điền vào chỗ trống>
+  Loi_Giai: <giải thích>
+
+• TU_LUAN — tự luận (CHỈ đặt trong =PHAN_2_TU_LUAN=):
+  [CAU_HOI]
+  Loai: TU_LUAN
+  Muc_Do: <mức độ>
+  De_Bai: <đề bài yêu cầu học sinh trình bày lời giải>
+  So_Dong_Nhap: <số nguyên dương — số dòng kẻ trống chừa cho học sinh làm bài, ví dụ 5 đến 12>
+  Loi_Giai: <hướng dẫn chấm / đáp án / các bước giải chi tiết>
+
+━━━━━━━━━━━━━━ CÁCH VIẾT CÔNG THỨC TOÁN ━━━━━━━━━━━━━━
+- Ký hiệu đơn giản: gõ thẳng bằng ASCII — lũy thừa x^2, căn sqrt(16), phân số 3/4, so sánh <= >= != , tương đương <=> , suy ra => , dấu nhân a*b , đơn vị cm2 cm3.
+- Công thức phức tạp hoặc lồng nhau (phân số trong căn, căn bậc n, tích phân, hệ phương trình…): bọc trong dấu $...$ và viết bằng LaTeX chuẩn. Ví dụ: $\\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}$ , $\\sqrt[3]{x+1}$ , $\\int_{0}^{1} x^2\\,dx$ .
+- Không trộn nửa ASCII nửa LaTeX trong cùng một biểu thức. Một biểu thức: hoặc toàn ASCII, hoặc toàn LaTeX trong $...$.
+
+━━━━━━━━━━━━━━ SỐ LƯỢNG CÂU HỎI ━━━━━━━━━━━━━━
+Nếu ở phần bổ sung phía dưới KHÔNG ghi yêu cầu số lượng cụ thể: hãy tạo khoảng 6 câu cho PHAN_1 (đủ cả TN, DUNG_SAI, DIEN_TU) và 2–3 câu TU_LUAN cho PHAN_2, phân bố trải đều 4 mức độ từ Nhan_Biet đến Van_Dung_Cao.
+Nếu CÓ ghi yêu cầu số lượng: tuân thủ đúng số lượng và đúng loại × mức độ được yêu cầu.
+
+━━━━━━━━━━━━━━ KHUNG MẪU — giữ nguyên cấu trúc, thay <...> bằng nội dung thật ━━━━━━━━━━━━━━
 
 =PHAN_1_TRAC_NGHIEM=
 [CAU_HOI]
 Loai: TN
 Muc_Do: Nhan_Biet
-De_Bai: Nội dung câu hỏi trắc nghiệm 4 đáp án...
-A. Lựa chọn A
-B. Lựa chọn B
-C. Lựa chọn C
-D. Lựa chọn D
+De_Bai: <nội dung câu trắc nghiệm>
+A. <lựa chọn A>
+B. <lựa chọn B>
+C. <lựa chọn C>
+D. <lựa chọn D>
 Dap_An: A
-Loi_Giai: Giải thích chi tiết cho đáp án đúng tại đây.
+Loi_Giai: <giải thích>
 
 [CAU_HOI]
 Loai: DUNG_SAI
 Muc_Do: Thong_Hieu
-De_Bai: Nội dung câu hỏi đúng sai...
+De_Bai: <một nhận định>
 Dap_An: Dung
-Loi_Giai: Giải thích tại sao đúng...
+Loi_Giai: <giải thích>
 
 [CAU_HOI]
 Loai: DIEN_TU
 Muc_Do: Van_Dung
-De_Bai: Nội dung câu hỏi điền từ (dùng ___ để đánh dấu chỗ trống)...
-Dap_An: đáp án đúng cần điền
-Loi_Giai: Giải thích tại đây...
+De_Bai: <câu hỏi có ___ ở chỗ trống>
+Dap_An: <đáp án cần điền>
+Loi_Giai: <giải thích>
 
 =PHAN_2_TU_LUAN=
 [CAU_HOI]
 Loai: TU_LUAN
 Muc_Do: Van_Dung_Cao
-De_Bai: Nội dung bài toán/câu hỏi tự luận cần trình bày các bước giải...
+De_Bai: <đề bài tự luận>
 So_Dong_Nhap: 8
-Loi_Giai: Hướng dẫn chấm và các bước giải chi tiết...`;
+Loi_Giai: <hướng dẫn chấm và các bước giải chi tiết>`;
 
 export const EXAM_PROMPT_EXAMPLE = `=PHAN_1_TRAC_NGHIEM=
 [CAU_HOI]
@@ -48,6 +113,17 @@ C. -8
 D. 8
 Dap_An: A
 Loi_Giai: (-5) + 3 = -(5 - 3) = -2, vì |-5| > |3| nên kết quả mang dấu âm.
+
+[CAU_HOI]
+Loai: TN
+Muc_Do: Thong_Hieu
+De_Bai: Giá trị của biểu thức $(-2)^{3} + \\sqrt{16}$ bằng bao nhiêu?
+A. -4
+B. 4
+C. -12
+D. 12
+Dap_An: A
+Loi_Giai: $(-2)^{3} = -8$ và $\\sqrt{16} = 4$, nên -8 + 4 = -4.
 
 [CAU_HOI]
 Loai: DUNG_SAI

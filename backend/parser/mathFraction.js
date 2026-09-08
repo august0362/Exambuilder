@@ -45,7 +45,10 @@ const PLAIN_TERM = '[\\p{L}\\p{N}\\p{M}°×±√+\\-]{1,20}';
 const TERM = `(?:${PAREN_TERM}|${TRIG_TERM}|${PLAIN_TERM})`;
 const FRACTION_RE = new RegExp(`(${TERM})\\/(${TERM})`, 'gu');
 
-function isLikelyFraction(rawNum, rawDen) {
+// Export de mathToLatex.js dung lai bo loc nay khi quyet dinh co boc "a/b"
+// thanh $\frac{a}{b}$ hay khong (cung 1 heuristic: chan tu noi tieng Viet,
+// don vi do luong, tu xuoi dai...).
+export function isLikelyFraction(rawNum, rawDen) {
   const num = rawNum.trim();
   const den = rawDen.trim();
   if (!num || !den) return false;
