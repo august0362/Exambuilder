@@ -32,9 +32,14 @@ private val BEGIN_ENV = Regex("""\\begin\{([A-Za-z*]+)\}""")
 
 fun parseMathNodes(raw: String?): List<MathNode> {
     if (raw.isNullOrEmpty()) return emptyList()
+    // Buoc 1: quy MOI cau truc toan 2 chieu ngoai $...$ ve $...$ / $$...$$
+    // LaTeX chuan (giao vien go "sqrt(16)", "3/4"; de cu bi lam phang "√80";
+    // AI sinh thieu $...). Sau day fast-path trong MathText tu nhuong sang
+    // duong JLaTeXMath khi co cau truc that. Port cua web formatMathSymbols.
+    val promoted = MathConvert.promoteStructuralMath(raw)
     val out = ArrayList<MathNode>()
     var i = 0
-    val n = raw.length
+    val n = promoted.length
     val plain = StringBuilder()
 
     fun flushPlain() {
@@ -46,20 +51,20 @@ fun parseMathNodes(raw: String?): List<MathNode> {
 
     while (i < n) {
         // ---- $$ ... $$ (block) ----
-        if (raw.startsWith("$$", i)) {
-            val end = raw.indexOf("$$", i + 2)
+        if (promoted.startsWith("$$", i)) {
+            val end = promoted.indexOf("$$", i + 2)
             if (end >= 0) {
                 flushPlain()
-                out.add(MathNode.Formula(raw.substring(i + 2, end).trim(), block = true))
+                out.add(MathNode.Formula(promoted.substring(i + 2, end).trim(), block = true))
                 i = end + 2
                 continue
             }
         }
         // ---- $ ... $ (inline) ----
-        if (raw[i] == '$') {
-            val end = raw.indexOf('$', i + 1)
+        if (promoted[i] == '$') {
+            val end = promoted.indexOf('$', i + 1)
             if (end > i) {
-                val body = raw.substring(i + 1, end).trim()
+                val body = promoted.substring(i + 1, end).trim()
                 flushPlain()
                 out.add(MathNode.Formula(body, block = looksLikeBlock(body)))
                 i = end + 1
@@ -67,20 +72,20 @@ fun parseMathNodes(raw: String?): List<MathNode> {
             }
         }
         // ---- bare \begin{env} ... \end{env} ----
-        val beginMatch = BEGIN_ENV.matchAt(raw, i)
+        val beginMatch = BEGIN_ENV.matchAt(promoted, i)
         if (beginMatch != null) {
             val env = beginMatch.groupValues[1]
             val endTag = "\\end{$env}"
-            val endIdx = raw.indexOf(endTag, beginMatch.range.last + 1)
+            val endIdx = promoted.indexOf(endTag, beginMatch.range.last + 1)
             if (endIdx >= 0) {
                 flushPlain()
-                val latex = raw.substring(i, endIdx + endTag.length).trim()
+                val latex = promoted.substring(i, endIdx + endTag.length).trim()
                 out.add(MathNode.Formula(latex, block = true))
                 i = endIdx + endTag.length
                 continue
             }
         }
-        plain.append(raw[i])
+        plain.append(promoted[i])
         i++
     }
     flushPlain()

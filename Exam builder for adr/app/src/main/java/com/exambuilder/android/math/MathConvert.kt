@@ -141,24 +141,33 @@ object MathConvert {
         return applyRules(text)
     }
 
-    private val MATH_SPAN = Regex("""\$[^$]*\$""")
+    private val MATH_SPAN = Regex("""\$\$[^$]+\$\$|\$[^$]+\$""")
+
+    /**
+     * Boc moi cau truc toan 2 chieu ngoai `$...$` thanh `$...$` / `$$...$$`
+     * LaTeX chuan (can, phan so, can bac n, he phuong trinh...). Port cua web
+     * `promoteStructuralMath` - xem [MathPromote]. Idempotent.
+     */
+    fun promoteStructuralMath(text: String?): String = MathPromote.promote(text)
 
     /**
      * Convert hand-typed ASCII math OUTSIDE `$...$` to Unicode while keeping
      * every `$...$` span verbatim (delimiters included). Mirrors the web's
-     * `formatMathSymbols()` — use it when normalising text typed into the
-     * editor so both clients store the same canonical string.
+     * `formatMathSymbols()` — step 1 boc cau truc 2 chieu thanh `$...$`
+     * (promoteStructuralMath), step 2 lam dep ky hieu 1 hang o vung ngoai
+     * `$...$`. Dung khi normalising text go vao editor.
      */
     fun normalizeInput(text: String?): String {
         if (text.isNullOrEmpty()) return ""
+        val promoted = promoteStructuralMath(text)
         val sb = StringBuilder()
         var last = 0
-        for (m in MATH_SPAN.findAll(text)) {
-            if (m.range.first > last) sb.append(applyRules(text.substring(last, m.range.first)))
+        for (m in MATH_SPAN.findAll(promoted)) {
+            if (m.range.first > last) sb.append(applyRules(promoted.substring(last, m.range.first)))
             sb.append(m.value)
             last = m.range.last + 1
         }
-        sb.append(applyRules(text.substring(last)))
+        sb.append(applyRules(promoted.substring(last)))
         return sb.toString()
     }
 
