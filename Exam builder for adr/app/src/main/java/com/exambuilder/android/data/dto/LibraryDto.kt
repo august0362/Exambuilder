@@ -7,6 +7,7 @@ import com.exambuilder.android.model.Question
 import com.exambuilder.android.model.QuestionBlock
 import com.exambuilder.android.model.QuestionOption
 import com.exambuilder.android.model.QuestionType
+import com.exambuilder.android.math.MathPromote
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -112,15 +113,20 @@ private fun BlockDto.toBlock(): QuestionBlock = QuestionBlock(
 
 private fun QuestionDto.toQuestion(): Question = Question(
     questionType = runCatching { QuestionType.valueOf(questionType) }.getOrDefault(QuestionType.ESSAY),
-    content = content,
+    // TASK E: de cu (dong bo tu Gist / nap tu file local) da bi ban cu lam
+    // phang "√80", "1/2" -> quy lai ve $...$ LaTeX ngay khi nap. Idempotent
+    // nen chay tren de moi cung vo hai; lan luu ke tiep ghi de ban nang cap.
+    content = MathPromote.promote(content),
     // Web gui difficulty_level = null cho cau tu luan; domain model khong nhan
     // null nen mac dinh ve NB.
     difficultyLevel = difficultyLevel
         ?.let { runCatching { DifficultyLevel.valueOf(it) }.getOrNull() }
         ?: DifficultyLevel.NB,
-    correctAnswer = correctAnswer,
-    explanation = explanation,
-    options = options.map { QuestionOption(optionKey = it.optionKey, optionText = it.optionText, isCorrect = it.isCorrect) },
+    correctAnswer = correctAnswer?.let { MathPromote.promote(it) },
+    explanation = explanation?.let { MathPromote.promote(it) },
+    options = options.map {
+        QuestionOption(optionKey = it.optionKey, optionText = MathPromote.promote(it.optionText), isCorrect = it.isCorrect)
+    },
     draftLinesCount = draftLinesCount
 )
 

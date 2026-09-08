@@ -484,6 +484,21 @@ function ensureIds(blocks) {
   });
 }
 
+// TASK E: de cu (nap tu DB / dong bo Gist / link chia se) da bi ban cu cua
+// formatMathSymbols lam phang "√80", "1/2"... -> quy lai ve $...$ LaTeX ngay
+// khi nap vao editor. formatMathSymbols idempotent nen chay tren de moi cung
+// vo hai; lan auto-save ke tiep se ghi de ban da nang cap.
+function normalizeExamMath(blocks) {
+  if (!Array.isArray(blocks)) return blocks;
+  blocks.forEach(b => (b.questions || []).forEach(q => {
+    if (q.content) q.content = formatMathSymbols(q.content);
+    if (q.explanation) q.explanation = formatMathSymbols(q.explanation);
+    if (q.correct_answer) q.correct_answer = formatMathSymbols(q.correct_answer);
+    (q.options || []).forEach(o => { if (o.option_text) o.option_text = formatMathSymbols(o.option_text); });
+  }));
+  return blocks;
+}
+
 // ---------- Render ----------
 // renderExamInto/renderQuestionCard/... nhan `ctx = { blocks, rerender }` de
 // dung chung duoc cho ca de goc (examContainerEl + state.blocks) lan tung
@@ -1585,6 +1600,7 @@ function loadExamIntoState(exam) {
   state.school_header = exam.school_header;
   state.blocks = exam.blocks;
   ensureIds(state.blocks);
+  normalizeExamMath(state.blocks); // TASK E: nang cap cong thuc toan de cu -> $...$
   state.isStudentMode = true;
 
   document.getElementById('examTitleInput').value = state.title || '';
@@ -1810,6 +1826,7 @@ function loadArchivedExamIntoState(exam) {
   state.school_header = exam.school_header || '';
   state.blocks = Array.isArray(exam.blocks) ? exam.blocks : [];
   ensureIds(state.blocks);
+  normalizeExamMath(state.blocks); // TASK E: nang cap cong thuc toan de cu -> $...$
   state.archiveId = exam.exam_id;
   state.examId = null;
   state.activeShareCode = null;
