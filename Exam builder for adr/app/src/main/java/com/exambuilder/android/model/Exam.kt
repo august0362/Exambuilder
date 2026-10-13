@@ -1,6 +1,7 @@
 package com.exambuilder.android.model
 
 import java.util.UUID
+import kotlinx.serialization.json.JsonObject
 
 /**
  * Mirrors the exam JSON schema produced by the web app's parsers
@@ -33,7 +34,9 @@ data class Question(
     val correctAnswer: String? = null,
     val explanation: String? = null,
     val options: List<QuestionOption> = emptyList(),
-    val draftLinesCount: Int = 0
+    val draftLinesCount: Int = 0,
+    val templateSlotId: String? = null,
+    val points: String? = null
 )
 
 data class QuestionBlock(
@@ -49,5 +52,8 @@ data class Exam(
     val subject: String = "",
     val durationMinutes: Int? = null,
     val schoolHeader: String = "",
-    val blocks: List<QuestionBlock> = emptyList()
+    val blocks: List<QuestionBlock> = emptyList(),
+    // Opaque render-critical snapshot from the web; preserve when opening and
+    // saving even when this Android release cannot edit every layout property.
+    val templateBinding: JsonObject? = null
 )

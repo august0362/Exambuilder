@@ -1,5 +1,7 @@
 const express = require('express');
 const crypto = require('crypto');
+const path = require('path');
+const { pathToFileURL } = require('url');
 const { getDb } = require('../database');
 const { withLock } = require('../mutex');
 const { validateExamPayload } = require('../examValidation');
@@ -227,7 +229,9 @@ router.get('/shared/:share_code', async (req, res) => {
 
     const exam = await fetchFullExam(db, share.exam_id);
     if (!exam) return res.status(404).json({ success: false, error: 'Khong tim thay de thi' });
-    res.json({ success: true, exam });
+    // Link chia se danh cho hoc sinh: khong tra dap an/loi giai qua API.
+    const { redactExamForStudent } = await import(pathToFileURL(path.join(__dirname, '..', 'parser', 'examRedaction.js')).href);
+    res.json({ success: true, exam: redactExamForStudent(exam) });
   } catch (err) {
     console.error(err);
     res.status(500).json({ success: false, error: 'Loi lay du lieu de thi chia se' });

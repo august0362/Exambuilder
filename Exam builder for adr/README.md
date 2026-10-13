@@ -75,7 +75,7 @@ Cấu hình trong tab "Kho đề" (Token & Gist ID khóa sau khi lưu, đổi qu
 **🆔 Thay đổi Gist ID**): thiết bị đầu tiên bấm **🆕 Tạo Gist ID mới**; thiết bị sau dán **cùng
 Token + cùng Gist ID** với bên web PC rồi **⬇️ Kéo về**.
 
-> ⚠️ **Bảo mật:** token lưu **plaintext** trong DataStore; Gist secret **không mã hóa** — ai có link Gist đều đọc được toàn bộ đề kèm đáp án. Xem chi tiết ở `../README.md` mục 4.3.
+> ⚠️ **Bảo mật:** token lưu **plaintext** trong DataStore; Gist secret **không mã hóa** — ai có link Gist đều đọc được toàn bộ đề kèm đáp án. Xem chi tiết ở `../documents/README.md` mục 4.3.
 
 ## Cài đặt giao diện (tab "Cài đặt")
 

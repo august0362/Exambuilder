@@ -988,6 +988,20 @@ textarea { resize: vertical; }
 .legend-fill .legend-icon { background: var(--color-vd); }
 .legend-essay .legend-icon { background: var(--color-vdc); }
 
+.prompt-platform-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+.platform-tab-btn {
+  padding: 0.35rem 0.9rem;
+  border-radius: 999px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  background: var(--color-surface);
+}
+.platform-tab-btn.active { background: var(--color-primary); color: var(--color-on-primary); border-color: var(--color-primary); }
+
 .prompt-accordion, .prompt-example-accordion {
   border: 1px solid var(--color-border);
   border-radius: 8px;
@@ -1281,4 +1295,93 @@ textarea { resize: vertical; }
   .exam-version-code-label { display: block !important; }
 
   @page { size: A4; margin: 0; }
+}
+
+/* Thu vien tai lieu: danh sach phan va lich su cap nhat */
+.resource-subheading { margin: .9rem 0 .4rem; font-size: .95rem; }
+.doc-section-names { margin: .3rem 0 .5rem 1.1rem; padding: 0; font-size: .88rem; }
+.resource-history { margin: 0; padding-left: 1.2rem; max-height: 220px; overflow-y: auto; font-size: .85rem; }
+.resource-history li { margin: .2rem 0; }
+
+/* Bang so cau thu gon: chi mo khi bam mui ten */
+.auto-spec-details { margin: .6rem 0; border: 1px solid var(--color-border); border-radius: 8px; padding: .4rem .6rem; }
+.auto-spec-details > summary { cursor: pointer; font-weight: 600; font-size: .9rem; }
+.auto-spec-details[open] > summary { margin-bottom: .4rem; }
+
+/* Xem truoc anh nen tren to A4 (ty le 210:297), tam anh trung tam trang */
+.bg-preview-dialog { border: none; border-radius: 12px; padding: 1.2rem; width: min(92vw, 480px); background: var(--color-surface, #fff); color: var(--color-text, #111); }
+.bg-preview-dialog::backdrop { background: rgba(0, 0, 0, .45); }
+.bg-preview-dialog h3 { margin: 0 0 .8rem; }
+.bg-preview-page { position: relative; width: min(100%, 400px); aspect-ratio: 210 / 297; margin: 0 auto; background: #fff; border: 1px solid #bbb; box-shadow: 0 4px 14px rgba(0,0,0,.15); overflow: hidden; color: #111; }
+.bg-preview-image { position: absolute; inset: 0; background-repeat: no-repeat; background-position: center; }
+.bg-preview-sample { position: relative; padding: 9% 7%; font-size: .72rem; line-height: 1.45; }
+.bg-preview-sample p { margin: 0 0 .5rem; }
+.bg-preview-school { font-weight: 700; text-align: center; }
+.bg-preview-title { font-weight: 700; font-size: .95rem; text-align: center; }
+.bg-preview-center { position: absolute; left: 50%; top: 50%; width: 14px; height: 14px; margin: -7px 0 0 -7px; border: 1px dashed rgba(220, 38, 38, .7); border-radius: 50%; pointer-events: none; }
+.bg-preview-center::before, .bg-preview-center::after { content: ''; position: absolute; background: rgba(220, 38, 38, .7); }
+.bg-preview-center::before { left: 6px; top: -6px; width: 1px; height: 24px; }
+.bg-preview-center::after { top: 6px; left: -6px; height: 1px; width: 24px; }
+@media print { .bg-preview-dialog { display: none !important; } }
+
+/* Bang sinh de tu dong: dialog lon, form trai + tien do/hoi dap phai */
+.autogen-board { border: none; border-radius: 14px; padding: 0; width: min(96vw, 1100px); max-height: 92vh; background: var(--color-surface, #fff); color: var(--color-text, #111); }
+.autogen-board::backdrop { background: rgba(0, 0, 0, .45); }
+.autogen-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: .9rem 1.2rem; border-bottom: 1px solid var(--color-border); position: sticky; top: 0; background: inherit; z-index: 1; }
+.autogen-head h3 { margin: 0; }
+.autogen-body { display: grid; grid-template-columns: minmax(0, 3fr) minmax(260px, 2fr); gap: 1.2rem; padding: 1rem 1.2rem 1.2rem; }
+.autogen-form { min-width: 0; }
+.autogen-side { position: sticky; top: 4.2rem; align-self: start; display: flex; flex-direction: column; gap: .8rem; }
+.autogen-side #autoGenerateBtn { width: 100%; }
+.autogen-progress { border: 1px solid var(--color-border); border-radius: 10px; padding: .7rem; }
+.autogen-bar { height: 12px; border-radius: 999px; background: var(--color-border, #e5e7eb); overflow: hidden; }
+.autogen-bar-fill { height: 100%; width: 0; background: linear-gradient(90deg, #2563eb, #7c3aed); transition: width .6s ease; }
+.autogen-stage { margin: .5rem 0; font-size: .88rem; }
+.autogen-steps { margin: 0; padding-left: 1.2rem; font-size: .85rem; color: var(--color-text-muted); }
+.autogen-steps li.active { color: var(--color-text, #111); font-weight: 600; }
+.autogen-steps li.done { color: #16a34a; }
+.autogen-steps li.done::marker { content: '✓  '; }
+.autogen-qa { border: 2px solid #f59e0b; border-radius: 10px; padding: .7rem; background: rgba(245, 158, 11, .06); }
+.autogen-qa h4 { margin: 0 0 .4rem; }
+.autogen-ai-questions { white-space: pre-wrap; font-family: inherit; margin: 0 0 .5rem; font-size: .9rem; }
+.autogen-qa textarea { width: 100%; box-sizing: border-box; }
+.autogen-qa-actions { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: .5rem; }
+@media (max-width: 760px) { .autogen-body { grid-template-columns: 1fr; } .autogen-side { position: static; } }
+@media print { .autogen-board { display: none !important; } }
+
+/* Bang sinh de: dung/huy, xem truoc de, hop xac nhan */
+.autogen-controls { display: flex; gap: .5rem; }
+.autogen-controls button { flex: 1; }
+.autogen-steps li.failed { color: #dc2626; font-weight: 600; }
+.autogen-preview { margin: 0 1.2rem 1.2rem; border-top: 1px solid var(--color-border); padding-top: 1rem; }
+.autogen-preview-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .6rem; }
+.autogen-preview-head h4 { margin: 0; }
+.autogen-preview-actions { display: flex; flex-wrap: wrap; gap: .5rem; }
+.autogen-preview-paper { margin-top: .6rem; max-height: 60vh; overflow-y: auto; border: 1px solid var(--color-border); border-radius: 10px; padding: 1rem 1.2rem; background: var(--color-surface, #fff); }
+.autogen-confirm { border: none; border-radius: 12px; padding: 1.1rem 1.2rem; width: min(90vw, 420px); background: var(--color-surface, #fff); color: var(--color-text, #111); }
+.autogen-confirm::backdrop { background: rgba(0, 0, 0, .35); }
+.autogen-confirm h4 { margin: 0 0 .5rem; }
+
+/* Nen gan vao de: hien ngay tren ban xem truoc (ban in dung .exam-print-bg). */
+.exam-container.has-screen-bg { position: relative; }
+.exam-container.has-screen-bg::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: var(--exam-bg);
+  background-repeat: repeat-y;
+  background-position: top center;
+  background-size: 100% auto;
+  opacity: var(--exam-bg-opacity, 0.3);
+  pointer-events: none;
+  border-radius: inherit;
+}
+.exam-container.has-screen-bg > * { position: relative; }
+.bg-exam-status { margin: 0; font-size: 0.8rem; }
+@media print {
+  .exam-container.has-screen-bg::before { display: none; }
+  /* Nen PDF (.exam-print-bg) nam DUOI de: moi lop phia tren phai trong suot,
+     neu khong nen trang (--color-surface: #fff) cua khung de/the cau hoi che
+     mat nen. Giay in von trang nen khong doi gi khi khong bat nen. */
+  .app-main, .preview-panel, .exam-container, .exam-container * { background-color: transparent !important; }
 }

@@ -8,6 +8,7 @@
 <meta name="color-scheme" content="light" />
 <title>ExamBuilder - Tạo Đề Kiểm Tra</title>
 <link rel="stylesheet" href="style.css" />
+<link rel="stylesheet" href="templateSystem.css" />
 <link rel="stylesheet" href="/vendor/katex/katex.min.css" />
 <script>
   // Áp dụng theme + cỡ chữ đã lưu TRƯỚC khi vẽ (tránh nháy màu).
@@ -54,10 +55,13 @@
     </div>
 
     <div class="toolbar-group">
+      <button id="shuffleOptionsBtn" type="button" class="tool-btn" disabled title="Xáo nội dung các lựa chọn trắc nghiệm; nhãn A B C D giữ nguyên thứ tự, đáp án đúng đi theo nội dung">🔀 Xáo trộn đáp án</button>
       <button id="shareBtn" type="button" class="tool-btn" disabled>Tạo Link Chia Sẻ</button>
       <button id="exportPdfBtn" type="button" class="tool-btn" disabled>Xuất PDF</button>
       <button id="exportWordBtn" type="button" class="tool-btn" disabled>Xuất Word</button>
+      <button id="saveExamBtn" type="button" class="tool-btn" disabled title="Lưu ngay đề đang mở (kèm nền đã áp) vào 📚 Lịch sử">💾 Lưu đề</button>
       <button id="libraryBtn" type="button" class="tool-btn">📚 Lịch sử</button>
+      <button id="templateSystemBtn" type="button" class="tool-btn">Mẫu đề</button>
       <button id="settingsBtn" type="button" class="tool-btn">⚙️ Cài đặt</button>
     </div>
   </div>
@@ -83,11 +87,20 @@
       <select id="bgSelect" disabled>
         <option value="">— Chọn ảnh nền —</option>
       </select>
+      <input type="file" id="bgUploadInput" accept=".png,.jpg,.jpeg,.webp,.svg,.pdf,.docx" hidden />
+      <button id="bgUploadBtn" type="button" class="secondary-btn" title="Ảnh PNG/JPG/WebP/SVG, hoặc PDF/Word (mỗi trang thành một ảnh nền). Lưu vào resources/backgrounds.">⬆️ Tải ảnh nền</button>
+      <select id="bgFitSelect" disabled title="Cách đặt ảnh nền lên tờ A4 — tâm ảnh luôn trùng tâm tờ giấy">
+        <option value="cover">Phủ kín trang (cắt phần thừa quanh tâm)</option>
+        <option value="contain">Giữ nguyên cả ảnh (đặt giữa trang)</option>
+      </select>
+      <button id="bgPreviewBtn" type="button" class="secondary-btn" disabled>👁 Xem nền</button>
       <label class="bg-opacity-label">
         Độ mờ
         <input type="range" id="bgOpacityRange" min="5" max="100" value="30" disabled />
         <span id="bgOpacityValue">30%</span>
       </label>
+      <button id="bgApplyToExamBtn" type="button" class="primary-btn" disabled title="Gắn nền đang chọn (độ mờ, cách đặt) vào đề đang mở và lưu ngay. Tắt Nền PDF rồi bấm để gỡ nền khỏi đề.">📌 Áp nền vào đề &amp; lưu</button>
+      <span class="hint bg-exam-status" id="bgExamStatus"></span>
     </div>
 
     <div class="tabs">
@@ -98,12 +111,16 @@
     </div>
 
     <div class="tab-content active" id="tab-text">
-      <textarea id="rawTextInput" rows="12" placeholder="Dán nội dung câu hỏi theo định dạng chuẩn (xem khu 'Prompt mẫu cho AI' bên dưới để lấy prompt sinh câu hỏi từ Gemini)..."></textarea>
+      <textarea id="rawTextInput" rows="12" placeholder="Dán nội dung câu hỏi theo định dạng chuẩn (xem khu 'Prompt mẫu cho AI' bên dưới để lấy prompt sinh câu hỏi từ Gemini / ChatGPT / DeepSeek / Claude / Grok)..."></textarea>
     </div>
 
     <div class="tab-content" id="tab-upload">
-      <input type="file" id="fileInput" accept=".json,.csv,.txt,.docx" />
-      <p class="hint">Hỗ trợ định dạng: .json, .csv, .txt, .docx (nội dung Word phải theo đúng cấu trúc trong khu "Prompt mẫu cho AI" bên dưới)</p>
+      <input type="file" id="fileInput" accept=".json,.csv,.txt,.docx,.pdf" />
+      <p class="hint">Hỗ trợ định dạng: .json, .csv, .txt, .docx, .pdf (nội dung phải theo đúng cấu trúc trong khu "Prompt mẫu cho AI" bên dưới). PDF scan (ảnh chụp) không đọc được chữ vì không có OCR.</p>
+      <div id="convertPromptBox" class="form-hidden">
+        <p class="hint" id="convertPromptHint"></p>
+        <button id="copyConvertPromptBtn" type="button" class="secondary-btn">📋 Copy prompt nhờ AI chuyển sang đúng định dạng</button>
+      </div>
     </div>
 
     <div class="tab-content" id="tab-form">
@@ -150,6 +167,20 @@
     </div>
 
     <div class="tab-content" id="tab-auto">
+      <p class="hint">Sinh đề bằng AI qua API (cần API key hoặc model local trong Cài đặt). Bảng sinh đề mở riêng cho dễ nhìn.</p>
+      <button id="openAutoGenBtn" type="button" class="primary-btn">🚀 Mở bảng sinh đề tự động</button>
+      <p class="hint" id="autoGenerateStatus"></p>
+    </div>
+    <dialog id="autoGenDialog" class="autogen-board" aria-labelledby="autoGenTitle">
+      <div class="autogen-head">
+        <h3 id="autoGenTitle">🚀 Sinh đề tự động bằng AI</h3>
+        <button type="button" id="autoGenCloseBtn" class="secondary-btn" title="Ẩn bảng (đề đang sinh vẫn tiếp tục)">✕ Đóng</button>
+      </div>
+      <div class="autogen-body">
+        <div class="autogen-form">
+      <label class="field-label">Tên đề (đặt cho đề mới sinh)
+        <input type="text" id="autoTitleInput" placeholder="Để trống = &quot;Đề kiểm tra – &lt;chủ đề&gt;&quot;" />
+      </label>
       <label class="field-label">Model
         <select id="autoModelSelect">
           <option value="">— Chưa có model, vào Cài đặt để thêm —</option>
@@ -158,14 +189,21 @@
       <label class="field-label">Chủ đề (dùng khi không chọn tài liệu, hoặc bổ sung ngữ cảnh)
         <input type="text" id="autoTopicInput" placeholder="VD: Toán 10 - Hàm số bậc nhất" />
       </label>
+      <label class="field-label">Yêu cầu cho AI (tùy chọn — ghép vào cuối prompt sẵn có)
+        <textarea id="autoExtraPromptInput" rows="3" placeholder="VD: 10 câu trắc nghiệm (4 nhận biết, 4 thông hiểu, 2 vận dụng) và 2 câu tự luận vận dụng cao; ưu tiên bài toán thực tế, phong cách đề THPT..."></textarea>
+      </label>
+      <p class="hint">Có thể ghi luôn số câu, loại câu, mức độ ở đây. Nếu có điền bảng số câu bên dưới thì <strong>bảng được ưu tiên</strong>: số câu/loại/mức độ theo bảng, còn yêu cầu viết tay dùng cho chủ đề, dạng bài, phong cách. Để trống cả hai thì AI dùng số câu mặc định của prompt.</p>
       <label class="field-label">Tài liệu tham khảo (tùy chọn)
         <select id="autoDocSelect">
           <option value="">— Không dùng tài liệu —</option>
         </select>
       </label>
       <div id="autoSectionCheckboxes" class="auto-section-checkboxes"></div>
+      <p class="hint">AI đọc các phần được tick cùng prompt (kiểu RAG): tài liệu vừa giới hạn thì gửi nguyên văn, quá dài thì chọn các đoạn liên quan nhất tới chủ đề/yêu cầu. Bỏ tick hết = dùng toàn bộ tài liệu. Tài liệu càng dài, chi phí API càng cao.</p>
 
-      <p class="hint">Số lượng câu hỏi theo loại × mức độ (để trống hoặc 0 = không sinh loại đó):</p>
+      <details class="auto-spec-details" id="autoSpecDetails">
+        <summary id="autoSpecSummary">Bảng số câu theo loại × mức độ (tùy chọn)</summary>
+      <p class="hint">Để 0 = không sinh loại đó. Bảng có số nào thì toàn bộ cấu trúc đề theo bảng.</p>
       <table class="auto-spec-table" id="autoSpecTable">
         <thead>
           <tr><th></th><th>NB</th><th>TH</th><th>VD</th><th>VDC</th></tr>
@@ -201,9 +239,8 @@
           </tr>
         </tbody>
       </table>
+      </details>
 
-      <button id="autoGenerateBtn" type="button" class="primary-btn">🚀 Sinh đề tự động</button>
-      <p class="hint" id="autoGenerateStatus"></p>
 
       <details class="prompt-accordion" id="resourceLibraryAccordion">
         <summary>📚 Quản lý thư viện tài liệu</summary>
@@ -213,10 +250,69 @@
             <input type="text" id="newDocSubject" placeholder="Môn học" />
           </div>
           <button id="addDocBtn" type="button" class="secondary-btn">+ Tạo tài liệu</button>
+          <h4 class="resource-subheading">Tài liệu hiện có</h4>
           <div id="docListForSections"></div>
+          <h4 class="resource-subheading">Lịch sử cập nhật</h4>
+          <ol id="resourceHistory" class="resource-history"></ol>
         </div>
       </details>
-    </div>
+        </div>
+        <aside class="autogen-side">
+          <label class="switch autogen-ask-toggle">
+            <input type="checkbox" id="autoAllowQuestions" checked />
+            <span class="switch-track"><span class="switch-thumb"></span></span>
+            <span class="switch-text">Cho AI hỏi lại khi thiếu thông tin</span>
+          </label>
+          <button id="autoGenerateBtn" type="button" class="primary-btn">🚀 Sinh đề</button>
+          <div class="autogen-controls" id="autoGenControls" hidden>
+            <button type="button" id="autoGenStopBtn" class="secondary-btn">⏸ Dừng</button>
+            <button type="button" id="autoGenResumeBtn" class="primary-btn" hidden>▶ Tiếp tục</button>
+            <button type="button" id="autoGenCancelBtn" class="delete-btn">✖ Hủy</button>
+          </div>
+          <div class="autogen-progress" id="autoGenProgress" hidden>
+            <div class="autogen-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-label="Tiến độ sinh đề"><div class="autogen-bar-fill" id="autoGenBarFill"></div></div>
+            <p class="autogen-stage" id="autoGenStage" aria-live="polite"></p>
+            <ol class="autogen-steps" id="autoGenSteps">
+              <li data-step="prepare">Chuẩn bị prompt</li>
+              <li data-step="calling">AI soạn đề</li>
+              <li data-step="checking">Kiểm tra định dạng, số câu</li>
+              <li data-step="done">Hoàn tất</li>
+            </ol>
+          </div>
+          <div class="autogen-qa" id="autoGenQA" hidden>
+            <h4>🤖 AI cần bạn trả lời</h4>
+            <pre class="autogen-ai-questions" id="autoGenQuestions"></pre>
+            <textarea id="autoGenAnswer" rows="4" placeholder="Trả lời bằng chữ, ví dụ: Lớp 9, chương Căn bậc hai, đề 45 phút"></textarea>
+            <div class="autogen-qa-actions">
+              <button type="button" id="autoGenSendAnswer" class="primary-btn">Gửi trả lời và sinh tiếp</button>
+              <button type="button" id="autoGenSkipAnswer" class="secondary-btn">Bỏ qua, cứ ra đề</button>
+            </div>
+          </div>
+          <p class="error-message" id="autoGenError"></p>
+          <p class="hint" id="autoGenResult"></p>
+        </aside>
+      </div>
+      <section class="autogen-preview" id="autoGenPreview" hidden>
+        <div class="autogen-preview-head">
+          <h4 id="autoGenPreviewTitle">Xem trước đề</h4>
+          <div class="autogen-preview-actions">
+            <button type="button" id="autoGenSaveBtn" class="primary-btn">💾 Lưu đề</button>
+            <button type="button" id="autoGenRegenBtn" class="secondary-btn">🔁 Sinh lại</button>
+            <button type="button" id="autoGenDiscardBtn" class="secondary-btn">🗑 Bỏ đề này</button>
+          </div>
+        </div>
+        <p class="hint" id="autoGenPreviewInfo"></p>
+        <div class="autogen-preview-paper" id="autoGenPreviewPaper"></div>
+      </section>
+      <dialog id="autoGenConfirm" class="autogen-confirm">
+        <h4 id="autoGenConfirmTitle"></h4>
+        <p id="autoGenConfirmText"></p>
+        <div class="modal-actions">
+          <button type="button" id="autoGenConfirmNo" class="secondary-btn">Không</button>
+          <button type="button" id="autoGenConfirmYes" class="primary-btn">Có</button>
+        </div>
+      </dialog>
+    </dialog>
 
     <button id="generateBtn" type="button" class="primary-btn">Sinh Đề Kiểm Tra</button>
     <p class="error-message" id="errorMessage"></p>
@@ -247,6 +343,22 @@
 
   <section class="preview-panel" id="previewPanel">
     <div id="examPrintBg" class="exam-print-bg"></div>
+    <dialog id="bgPreviewDialog" class="bg-preview-dialog" aria-label="Xem trước ảnh nền">
+      <h3>Xem trước ảnh nền trên tờ A4</h3>
+      <div class="bg-preview-page" id="bgPreviewPage">
+        <div class="bg-preview-image" id="bgPreviewImage"></div>
+        <div class="bg-preview-sample">
+          <p class="bg-preview-school">TÊN TRƯỜNG</p>
+          <p class="bg-preview-title">ĐỀ KIỂM TRA</p>
+          <p>Câu 1: Nội dung câu hỏi mẫu để xem độ rõ của chữ trên nền.</p>
+          <p>A. Lựa chọn A &nbsp;&nbsp; B. Lựa chọn B &nbsp;&nbsp; C. Lựa chọn C &nbsp;&nbsp; D. Lựa chọn D</p>
+          <p>Câu 2: ........................................................................</p>
+        </div>
+        <div class="bg-preview-center" aria-hidden="true" title="Tâm tờ giấy"></div>
+      </div>
+      <p class="hint" id="bgPreviewInfo"></p>
+      <div class="modal-actions"><button type="button" class="primary-btn" id="bgPreviewCloseBtn">Đóng</button></div>
+    </dialog>
     <div class="code-tabs no-print" id="codeTabs"></div>
     <div id="examContainer" class="exam-container">
       <p class="empty-hint">Chưa có đề thi nào. Hãy nhập dữ liệu ở bảng bên trái và bấm "Sinh Đề Kiểm Tra".</p>
@@ -289,8 +401,11 @@
   </div>
 
   <details class="prompt-accordion" id="promptAccordion">
-    <summary>Xem &amp; sao chép prompt để dán vào Gemini / ChatGPT / Claude</summary>
+    <summary>Xem &amp; sao chép prompt để dán vào Gemini / Gemini Pro / ChatGPT / DeepSeek / Claude / Grok</summary>
     <div class="prompt-accordion-body">
+      <p class="hint">Mỗi AI có một prompt riêng (cùng định dạng chuẩn, kèm lưu ý riêng cho AI đó) — chọn AI bạn định dùng rồi copy.</p>
+      <div class="prompt-platform-tabs" id="promptPlatformTabs"></div>
+      <p class="hint" id="promptPlatformHint"></p>
       <div class="prompt-toolbar">
         <p class="hint">Thay <code>[NHẬP MÔN HỌC/CHỦ ĐỀ Ở ĐÂY]</code> bằng chủ đề bạn muốn trước khi dán vào AI.</p>
         <button type="button" id="copyPromptBtn" class="secondary-btn">📋 Copy Prompt</button>
@@ -300,7 +415,7 @@
       <details class="prompt-example-accordion">
         <summary>Xem ví dụ kết quả mẫu (dán thử ngay, không cần gọi AI)</summary>
         <div class="prompt-toolbar">
-          <p class="hint">Có thể copy và dán thẳng vào tab "Dán văn bản" rồi bấm "Sinh Đề Kiểm Tra" để xem thử.</p>
+          <p class="hint" id="promptExampleHint">Có thể copy và dán thẳng vào tab "Dán văn bản" rồi bấm "Sinh Đề Kiểm Tra" để xem thử.</p>
           <button type="button" id="copyExampleBtn" class="secondary-btn">📋 Copy Ví dụ</button>
         </div>
         <pre class="prompt-text" id="promptExampleText"></pre>
@@ -316,6 +431,7 @@
     <h3>Chia sẻ đề thi</h3>
     <input type="text" id="shareLinkOutput" readonly />
     <p class="hint" id="shareRevokeHint"></p>
+    <p class="hint" id="shareNetworkHint"></p>
     <div class="modal-actions">
       <button id="revokeShareLinkBtn" type="button" class="secondary-btn form-hidden">Thu hồi link</button>
       <button id="copyShareLinkBtn" type="button" class="primary-btn">Sao chép</button>
@@ -437,19 +553,15 @@
         <span class="provider-status hint"></span>
         <button type="button" class="secondary-btn save-key-btn">Lưu</button>
       </div>
+      <div class="settings-provider-row" data-provider="deepseek">
+        <span class="provider-label">DeepSeek</span>
+        <input type="password" class="provider-key-input" placeholder="sk-... (platform.deepseek.com)" />
+        <span class="provider-status hint"></span>
+        <button type="button" class="secondary-btn save-key-btn">Lưu</button>
+      </div>
     </div>
 
-    <h4>Model Cloud đã đăng ký</h4>
-    <div class="meta-row">
-      <select id="newCloudModelProvider">
-        <option value="openai">OpenAI</option>
-        <option value="anthropic">Anthropic</option>
-        <option value="gemini">Gemini</option>
-      </select>
-      <input type="text" id="newCloudModelName" placeholder="Tên model API (vd: gpt-4o-mini)" />
-      <input type="text" id="newCloudModelDisplay" placeholder="Tên hiển thị" />
-    </div>
-    <button id="addCloudModelBtn" type="button" class="secondary-btn">+ Thêm model cloud</button>
+    <p class="hint">Model cloud (OpenAI/Anthropic/Gemini/DeepSeek) không cần đăng ký thủ công — cứ lưu API key ở trên là toàn bộ model của hãng đó tự hiện trong dropdown "Model" ở tab "Sinh đề tự động".</p>
 
     <h4>Model cục bộ (.gguf)</h4>
     <p class="hint">Chỉ nhận file .gguf (llama.cpp). File lớn, cần đủ RAM để nạp model, tốc độ sinh chậm hơn cloud.</p>
@@ -545,5 +657,6 @@
 <script src="/vendor/mammoth/mammoth.browser.js"></script>
 <script src="/vendor/katex/katex.min.js"></script>
 <script type="module" src="script.js"></script>
+<script type="module" src="templateSystem.js"></script>
 </body>
 </html>

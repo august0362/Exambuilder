@@ -1,13 +1,16 @@
 const { OpenAIProvider } = require('./OpenAIProvider');
 const { AnthropicProvider } = require('./AnthropicProvider');
 const { GeminiProvider } = require('./GeminiProvider');
+const { DeepSeekProvider } = require('./DeepSeekProvider');
 const { LocalGgufProvider } = require('./LocalGgufProvider');
 
 const CLOUD_PROVIDERS = {
   openai: OpenAIProvider,
   anthropic: AnthropicProvider,
-  gemini: GeminiProvider
+  gemini: GeminiProvider,
+  deepseek: DeepSeekProvider
 };
+
 
 /**
  * modelRow: 1 dong tu bang LLM_MODEL.
@@ -40,4 +43,19 @@ function createProvider(modelRow, apiKey) {
   throw new Error(`source_type khong hop le: "${modelRow.source_type}"`);
 }
 
-module.exports = { createProvider };
+/**
+ * Lay danh sach model kha dung tu API cua 1 provider cloud, dung apiKey da co
+ * (chua chon model_name vi day chinh la buoc tim model_name).
+ */
+function listModelsFor(provider, apiKey) {
+  const ProviderClass = CLOUD_PROVIDERS[provider];
+  if (!ProviderClass) {
+    throw new Error(`Provider cloud khong hop le: "${provider}"`);
+  }
+  if (!apiKey) {
+    throw new Error(`Chua cau hinh API key cho provider "${provider}"`);
+  }
+  return new ProviderClass(apiKey, null).listModels();
+}
+
+module.exports = { createProvider, listModelsFor };

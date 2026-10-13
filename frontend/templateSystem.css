@@ -1,0 +1,86 @@
+.template-dialog {
+  width: min(1200px, 96vw);
+  max-width: 96vw;
+  max-height: 94vh;
+  padding: 1.2rem;
+  overflow: auto;
+  color: var(--color-text);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+.template-dialog::backdrop { background: rgba(0, 0, 0, .55); }
+.template-top, .template-editor-header { display: flex; gap: .6rem; align-items: center; flex-wrap: wrap; margin-bottom: .8rem; }
+.template-top h2, .template-editor-header h3 { margin: 0 auto 0 0; }
+.template-dialog button { padding: .45rem .7rem; cursor: pointer; color: var(--color-text); background: var(--color-surface-2); border: 1px solid var(--color-border); border-radius: 6px; }
+.template-dialog button:hover, .template-dialog button.selected { border-color: var(--color-primary); background: var(--color-primary-soft); }
+.template-status { min-height: 1.5em; color: var(--color-text-muted); }
+.template-status.error { color: var(--color-danger); }
+.template-gallery input { width: 100%; padding: .6rem; margin-bottom: .7rem; }
+.template-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: .6rem; max-height: 230px; overflow: auto; }
+.template-card { display: flex; flex-direction: column; gap: .35rem; padding: .7rem; border: 1px solid var(--color-border); border-radius: 7px; }
+.template-card span { color: var(--color-text-muted); font-size: .9em; }
+.template-editor { margin-top: 1rem; }
+.template-columns { display: grid; grid-template-columns: minmax(210px, 1fr) minmax(250px, 1fr); gap: .8rem; }
+.template-list, .template-inspector, .template-prompts { border: 1px solid var(--color-border); border-radius: 7px; padding: .8rem; }
+.template-list { max-height: 400px; overflow: auto; }
+.template-list section { display: flex; flex-direction: column; gap: .25rem; margin-bottom: .8rem; }
+.template-list h4, .template-inspector h4, .template-prompts h4 { margin: .2rem 0 .6rem; }
+.template-list button { text-align: left; }
+.template-prompt-pick { display: flex; align-items: center; gap: .3rem; }
+.template-prompt-pick button { flex: 1; }
+.template-field { display: flex; flex-direction: column; gap: .2rem; margin-bottom: .55rem; font-weight: 600; }
+.template-field input, .template-field select, .template-field textarea, .template-prompts > textarea { width: 100%; padding: .5rem; color: var(--color-text); background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 5px; font: inherit; }
+.template-prompts { margin-top: .8rem; }
+.template-prompts > textarea { margin: .5rem 0; resize: vertical; }
+.template-report { white-space: pre-wrap; max-height: 220px; overflow: auto; }
+.template-download-link { display: inline-block; margin-top: .35rem; font-weight: 600; }
+.template-settings { margin: .5rem 0; border: 1px solid var(--color-border); padding: .6rem; border-radius: 7px; }
+.template-settings summary { cursor: pointer; font-weight: 600; }
+.template-paper-wrap { margin-top: .8rem; border: 1px solid var(--color-border); border-radius: 7px; padding: .8rem; }
+.template-preview-controls { display: flex; align-items: center; gap: 1rem; }
+.template-preview-controls h4 { margin: 0 auto 0 0; }
+.template-preview-controls .template-field { min-width: 150px; }
+.template-paper { width: min(100%, 760px); min-height: 700px; margin: .5rem auto; padding: 2rem; background: white; color: #111; border: 1px solid #aaa; box-shadow: 0 4px 15px rgba(0,0,0,.12); position: relative; isolation: isolate; }
+/* Nen ve qua lop rieng de ap do mo cau hinh, khong lam mo chu cua de. */
+.template-paper.has-bg::before { content: ''; position: absolute; inset: 0; z-index: -1; background-image: var(--template-bg); background-size: var(--template-bg-fit, contain); background-repeat: no-repeat; background-position: center; opacity: var(--template-bg-opacity, .12); print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+.template-paper.a5 { max-width: 540px; min-height: 620px; }
+.template-paper.landscape { max-width: 900px; min-height: 500px; }
+.template-paper h3, .template-paper h4 { text-align: center; }
+.template-paper-two-cols { columns: 2; column-gap: 1rem; }
+.template-paper-slot { display: block; width: 100%; margin: .45rem 0; padding: .35rem !important; text-align: left; background: transparent !important; color: #111 !important; border: 1px solid transparent !important; break-inside: avoid; }
+.template-paper-slot:hover, .template-paper-slot.selected { border-color: #1976d2 !important; }
+.template-paper-slot p { margin: .25rem 0; white-space: pre-wrap; }
+.template-answer-space.lined > div { height: 1.25rem; border-bottom: 1px solid #999; }
+.template-answer-space.squared { background: linear-gradient(#bbb 1px, transparent 1px), linear-gradient(90deg, #bbb 1px, transparent 1px); background-size: 1.25rem 1.25rem; }
+.template-answer-space.squared > div, .template-answer-space.blank > div, .template-answer-space.drawing > div, .template-answer-space.table > div { height: 1.25rem; }
+.template-answer-space.drawing, .template-answer-space.table { border: 1px solid #999; }
+.template-combined-key { break-before: page; }
+.template-pdf-pages { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: .7rem; }
+.template-pdf-page { position: relative; width: 100%; border: 1px solid var(--color-border); }
+.template-pdf-page img { display: block; width: 100%; height: auto; }
+.template-pdf-page .template-region-marker { position: absolute; overflow: hidden; padding: .1rem; border: 2px solid var(--color-primary); background: color-mix(in srgb, var(--color-primary-soft) 75%, transparent); font-size: .7rem; }
+@media (max-width: 700px) { .template-columns { grid-template-columns: 1fr; } }
+/* Chi an trang chinh khi IN TU cua so Mau de (body.template-printing do
+   templateSystem.js gan truoc window.print). Neu khong, nut "Xuat PDF" cua
+   trang chinh in ra trang trang. */
+@media print {
+  body.template-printing > *:not(.template-dialog) { display: none !important; }
+  body.template-printing .template-dialog { position: static; display: block !important; width: 100%; max-width: none; max-height: none; padding: 0; overflow: visible; border: 0; }
+  body.template-printing .template-dialog > *:not(.template-editor), body.template-printing .template-editor > *:not(.template-paper-wrap), body.template-printing .template-preview-controls { display: none !important; }
+  .template-paper-wrap { padding: 0; margin: 0; border: 0; }
+  .template-paper { width: 100% !important; max-width: none !important; min-height: 0; margin: 0; padding: 0; border: 0; box-shadow: none; print-color-adjust: exact; }
+  .template-paper-slot { break-inside: avoid; }
+}
+
+/* Gui prompt mau qua AI API cua du an */
+.template-api-box { margin: .8rem 0; padding: .7rem; border: 1px dashed var(--color-border); border-radius: 8px; display: flex; flex-direction: column; gap: .45rem; }
+.template-api-box h4 { margin: 0; }
+.template-api-status { margin: 0; font-size: .88rem; }
+.template-api-status.error { color: #dc2626; }
+.template-api-qa { border: 2px solid #f59e0b; border-radius: 8px; padding: .5rem; display: flex; flex-direction: column; gap: .4rem; }
+.template-api-qa pre { white-space: pre-wrap; margin: 0; font-family: inherit; }
+
+/* Toast trong dialog mau de (dialog o top layer che toast cua trang chinh). */
+.template-toast { z-index: 10; max-width: min(90vw, 560px); text-align: center; border-radius: 12px; }
+.template-toast.error { background: var(--color-danger); }

@@ -7,15 +7,17 @@
     "start": "node backend/server.js",
     "test": "jest",
     "test:coverage": "jest --coverage --collectCoverageFrom=\"backend/**/*.js\" --coveragePathIgnorePatterns=\"server.js|index.js\"",
-    "gen:prompt": "node tools/gen-prompt-module.js"
+    "gen:prompt": "node tools/gen-prompt-module.js && node tools/gen-prompt-variants.js"
   },
   "dependencies": {
+    "@napi-rs/canvas": "^0.1.100",
     "docx": "^9.7.1",
     "express": "^4.19.2",
     "katex": "^0.18.4",
     "mammoth": "^1.12.1",
     "multer": "^2.2.0",
     "node-llama-cpp": "^3.20.0",
+    "pdf-parse": "^2.4.5",
     "sqlite": "^5.1.1",
     "sqlite3": "^5.1.7"
   },

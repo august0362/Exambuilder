@@ -428,6 +428,18 @@ describe('GET /api/exams/shared/:share_code', () => {
     expect(res.body.exam.blocks).toHaveLength(2);
   });
 
+  test('TC-API-26b [Security]: link chia se hoc sinh khong tra dap an, loi giai hay is_correct', async () => {
+    const shareCode = await saveAndShare();
+    const res = await request(buildApp()).get(`/api/exams/shared/${shareCode}`);
+    expect(res.status).toBe(200);
+    expect(res.body.exam.redacted_for_student).toBe(true);
+    for (const block of res.body.exam.blocks) for (const q of block.questions) {
+      expect(q.correct_answer).toBeNull();
+      expect(q.explanation).toBeNull();
+      for (const option of q.options || []) expect(option.is_correct).toBe(false);
+    }
+  });
+
   test('TC-API-27 [Edge]: link bi vo hieu hoa (is_active=0) bi GET /shared/:code tu choi (404)', async () => {
     const shareCode = await saveAndShare();
     const db = await getDb();

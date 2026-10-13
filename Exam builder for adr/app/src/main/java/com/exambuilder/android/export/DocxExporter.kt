@@ -11,6 +11,9 @@ import com.exambuilder.android.math.parseMathNodes
 import com.exambuilder.android.model.Exam
 import com.exambuilder.android.model.Question
 import com.exambuilder.android.model.QuestionType
+import com.exambuilder.android.model.TemplatePaper
+import com.exambuilder.android.model.TemplateSlot
+import com.exambuilder.android.model.templateLayout
 import java.io.BufferedOutputStream
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -35,6 +38,7 @@ object DocxExporter {
 
     fun export(context: Context, exam: Exam, studentMode: Boolean = false): Uri {
         val b = DocBuilder()
+        val layout = exam.templateLayout()
         buildBody(b, exam, studentMode)
 
         val out = File(context.getExternalFilesDir("exports"), exam.exportFileStem() + ".docx")
@@ -42,7 +46,7 @@ object DocxExporter {
         ZipOutputStream(BufferedOutputStream(FileOutputStream(out))).use { zip ->
             zip.entry("[Content_Types].xml", contentTypes())
             zip.entry("_rels/.rels", PACKAGE_RELS)
-            zip.entry("word/document.xml", document(b.body.toString()))
+            zip.entry("word/document.xml", document(b.body.toString(), layout?.paper))
             if (b.images.isNotEmpty()) {
                 zip.entry("word/_rels/document.xml.rels", documentRels(b.images.size))
                 b.images.forEachIndexed { i, png ->
@@ -58,6 +62,7 @@ object DocxExporter {
     // ---- document body ----
 
     private fun buildBody(b: DocBuilder, exam: Exam, studentMode: Boolean) {
+        val layout = exam.templateLayout()
         if (exam.schoolHeader.isNotBlank()) b.body.append(para(textRun(exam.schoolHeader), align = "center"))
         b.body.append(para(textRun(exam.title.ifBlank { "Đề kiểm tra" }, bold = true), align = "center", sizeHalfPt = 32))
         val meta = buildList {
@@ -69,12 +74,18 @@ object DocxExporter {
         b.body.append(EMPTY_PARA)
 
         var counter = 0
-        exam.blocks.forEach { block ->
+        exam.blocks.forEachIndexed { blockIndex, block ->
             b.body.append(para(textRun(block.blockTitle, bold = true), sizeHalfPt = 26))
+            if (layout?.sections?.size == exam.blocks.size) {
+                layout.sections[blockIndex].stimulus?.let { b.body.append(para(textRun(it))) }
+            }
             block.questions.forEach { q ->
                 counter++
                 b.body.append(para(textRun("Câu $counter. ", bold = true) + mathRuns(b, q.content)))
-                appendAnswerArea(b, q, studentMode)
+                layout?.slotFor(q, counter - 1)?.points?.takeIf { it.isNotBlank() }?.let {
+                    b.body.append(para(textRun("    ($it điểm)"), sizeHalfPt = 19))
+                }
+                appendAnswerArea(b, q, studentMode, layout?.slotFor(q, counter - 1))
                 if (!studentMode && !q.explanation.isNullOrBlank()) {
                     splitSentences(q.explanation).forEachIndexed { i, sentence ->
                         b.body.append(
@@ -101,7 +112,7 @@ object DocxExporter {
         }
     }
 
-    private fun appendAnswerArea(b: DocBuilder, q: Question, studentMode: Boolean) {
+    private fun appendAnswerArea(b: DocBuilder, q: Question, studentMode: Boolean, slot: TemplateSlot?) {
         when (q.questionType) {
             QuestionType.MCQ -> q.options.forEach { opt ->
                 val correct = !studentMode && opt.isCorrect
@@ -120,8 +131,8 @@ object DocxExporter {
                     b.body.append(para(textRun("    Đáp án: ", italic = true, color = GREEN) + mathRuns(b, q.correctAnswer, italic = true, color = GREEN)))
                 }
             }
-            QuestionType.ESSAY -> repeat(q.draftLinesCount.coerceIn(0, 30)) {
-                b.body.append(para(textRun("    ................................................................................")))
+            QuestionType.ESSAY -> repeat((slot?.answerLines ?: q.draftLinesCount).coerceIn(0, 30)) {
+                b.body.append(if (slot?.answerKind == "blank") EMPTY_PARA else para(textRun("    ................................................................................")))
             }
         }
     }
@@ -225,12 +236,20 @@ object DocxExporter {
 
     private const val EMPTY_PARA = "<w:p/>\n"
 
-    private fun document(body: String): String = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+    private fun document(body: String, paper: TemplatePaper?): String {
+        val width = (paper?.widthPt ?: 595) * 20
+        val height = (paper?.heightPt ?: 842) * 20
+        val top = ((paper?.topPt ?: 56.7f) * 20).toInt()
+        val bottom = ((paper?.bottomPt ?: 56.7f) * 20).toInt()
+        val left = ((paper?.leftPt ?: 56.7f) * 20).toInt()
+        val right = ((paper?.rightPt ?: 56.7f) * 20).toInt()
+        return """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">
 <w:body>
-$body<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1134" w:right="1134" w:bottom="1134" w:left="1134" w:header="708" w:footer="708" w:gutter="0"/></w:sectPr>
+$body<w:sectPr><w:pgSz w:w="$width" w:h="$height"/><w:pgMar w:top="$top" w:right="$right" w:bottom="$bottom" w:left="$left" w:header="708" w:footer="708" w:gutter="0"/></w:sectPr>
 </w:body>
 </w:document>"""
+    }
 
     private fun contentTypes(): String = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">

@@ -2,7 +2,8 @@ const {
   fisherYatesShuffle,
   allocateForCodes,
   generateExamCodes,
-  shuffleAllMCQOptions
+  shuffleAllMCQOptions,
+  shuffleMCQOptions
 } = require('../../backend/parser/examCodeGenerator.js');
 
 function makeMCQ(id, correctText, difficulty = 'NB') {
@@ -223,5 +224,16 @@ describe('shuffleAllMCQOptions (Bug 1 - thien lech dap an)', () => {
     shuffleAllMCQOptions(blocks);
     const keyDistribution = new Set(blocks[0].questions.map(q => q.correct_answer));
     expect(keyDistribution.size).toBeGreaterThan(1);
+  });
+});
+
+describe('shuffleMCQOptions - du lieu thieu is_correct', () => {
+  test('TC-SHUF-IC: suy dap an dung tu correct_answer, chu cai moi luon tro dung noi dung', () => {
+    for (let i = 0; i < 30; i++) {
+      const q = { question_type: 'MCQ', correct_answer: 'C', options: ['Mot', 'Hai', 'DUNG', 'Bon'].map((t, k) => ({ option_key: 'ABCD'[k], option_text: t })) };
+      const out = shuffleMCQOptions(q);
+      expect(out.options.map(o => o.option_key)).toEqual(['A', 'B', 'C', 'D']);
+      expect(out.options.find(o => o.option_key === out.correct_answer).option_text).toBe('DUNG');
+    }
   });
 });

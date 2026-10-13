@@ -12,6 +12,7 @@ import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
 
 /**
  * DTO cho file thu vien tren Gist (`exambuilder-library.json`). Tach hẳn khoi
@@ -50,7 +51,9 @@ data class QuestionDto(
     @SerialName("correct_answer") val correctAnswer: String? = null,
     val explanation: String? = null,
     val options: List<OptionDto> = emptyList(),
-    @SerialName("draft_lines_count") val draftLinesCount: Int = 0
+    @SerialName("draft_lines_count") val draftLinesCount: Int = 0,
+    @SerialName("template_slot_id") val templateSlotId: String? = null,
+    val points: String? = null
 )
 
 @Serializable
@@ -70,7 +73,8 @@ data class SavedExamDto(
     val blocks: List<BlockDto> = emptyList(),
     @SerialName("created_at") val createdAt: String? = null,
     @SerialName("updated_at") val updatedAt: String? = null,
-    @SerialName("deleted_at") val deletedAt: String? = null
+    @SerialName("deleted_at") val deletedAt: String? = null,
+    @SerialName("template_binding") val templateBinding: JsonObject? = null
 ) {
     val isDeleted: Boolean get() = deletedAt != null
 }
@@ -102,7 +106,8 @@ fun SavedExamDto.toExam(): Exam = Exam(
     subject = subject,
     durationMinutes = durationMinutes,
     schoolHeader = schoolHeader,
-    blocks = blocks.map { it.toBlock() }
+    blocks = blocks.map { it.toBlock() },
+    templateBinding = templateBinding
 )
 
 private fun BlockDto.toBlock(): QuestionBlock = QuestionBlock(
@@ -127,7 +132,9 @@ private fun QuestionDto.toQuestion(): Question = Question(
     options = options.map {
         QuestionOption(optionKey = it.optionKey, optionText = MathPromote.promote(it.optionText), isCorrect = it.isCorrect)
     },
-    draftLinesCount = draftLinesCount
+    draftLinesCount = draftLinesCount,
+    templateSlotId = templateSlotId,
+    points = points
 )
 
 // ---------- domain -> DTO ----------
@@ -141,7 +148,8 @@ fun Exam.toSavedExamDto(examId: String, createdAt: String?, nowIso: String): Sav
     blocks = blocks.map { it.toDto() },
     createdAt = createdAt ?: nowIso,
     updatedAt = nowIso,
-    deletedAt = null
+    deletedAt = null,
+    templateBinding = templateBinding
 )
 
 private fun QuestionBlock.toDto(): BlockDto = BlockDto(
@@ -157,5 +165,7 @@ private fun Question.toDto(): QuestionDto = QuestionDto(
     correctAnswer = correctAnswer,
     explanation = explanation,
     options = options.map { OptionDto(optionKey = it.optionKey, optionText = it.optionText, isCorrect = it.isCorrect) },
-    draftLinesCount = draftLinesCount
+    draftLinesCount = draftLinesCount,
+    templateSlotId = templateSlotId,
+    points = points
 )

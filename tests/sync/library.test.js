@@ -57,6 +57,14 @@ describe('parseLibrary', () => {
 });
 
 describe('rowsToLibrary / libraryToRows (round-trip)', () => {
+  test('template snapshot survives row, gist normalization and row conversion', () => {
+    const binding = { schema_version: 1, template_id: 'builtin.t10', template_version: 1, template_snapshot: { sections: [{ stimulus: 'Read this text' }] } };
+    const rows = [{ exam_id: 'bound', payload_json: JSON.stringify({ blocks: BLOCKS, template_binding: binding }) }];
+    const cloud = parseLibrary(JSON.stringify(rowsToLibrary(rows)));
+    expect(cloud.exams[0].template_binding).toEqual(binding);
+    expect(JSON.parse(libraryToRows(cloud)[0].payload_json).template_binding).toEqual(binding);
+    expect(mergeLibraries(cloud, emptyLibrary()).exams[0].template_binding).toEqual(binding);
+  });
   test('row -> library -> row giu nguyen du lieu cot va blocks', () => {
     const rows = [{
       exam_id: 'x1', title: 'De x1', subject: 'Ly', duration_minutes: 30, school_header: 'H',

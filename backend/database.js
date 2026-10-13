@@ -53,7 +53,7 @@ CREATE TABLE IF NOT EXISTS EXAM_SHARE (
 );
 
 CREATE TABLE IF NOT EXISTS LLM_SETTINGS (
-  provider    TEXT PRIMARY KEY CHECK (provider IN ('openai','anthropic','gemini')),
+  provider    TEXT PRIMARY KEY CHECK (provider IN ('openai','anthropic','gemini','deepseek')),
   api_key     TEXT NOT NULL,
   updated_at  TEXT DEFAULT (datetime('now'))
 );
@@ -62,7 +62,7 @@ CREATE TABLE IF NOT EXISTS LLM_MODEL (
   model_id      TEXT PRIMARY KEY,
   display_name  TEXT NOT NULL,
   source_type   TEXT NOT NULL CHECK (source_type IN ('cloud','local_gguf')),
-  provider      TEXT CHECK (provider IN ('openai','anthropic','gemini')),
+  provider      TEXT CHECK (provider IN ('openai','anthropic','gemini','deepseek')),
   model_name    TEXT,
   file_path     TEXT,
   file_size     INTEGER,
@@ -82,6 +82,17 @@ CREATE TABLE IF NOT EXISTS RESOURCE_SECTION (
   section_title  TEXT NOT NULL,
   content        TEXT NOT NULL,
   sort_order     INTEGER DEFAULT 0
+);
+
+-- Lich su thao tac thu vien tai lieu (tao/them phan/tai file/xoa). Khong co
+-- khoa ngoai: giu lai dong lich su ca khi tai lieu da bi xoa.
+CREATE TABLE IF NOT EXISTS RESOURCE_HISTORY (
+  history_id     INTEGER PRIMARY KEY,
+  action         TEXT NOT NULL CHECK (action IN ('create_doc','add_section','upload_section','delete_doc')),
+  doc_title      TEXT,
+  section_title  TEXT,
+  detail         TEXT,
+  created_at     TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now'))
 );
 
 -- Kho de (lich su luu tru): moi de la 1 dong, payload_json giu nguyen
@@ -108,19 +119,73 @@ CREATE TABLE IF NOT EXISTS SYNC_SETTINGS (
   gist_id        TEXT,
   last_synced_at TEXT
 );
+
+-- User templates only. Built-in templates live in the versioned code manifest.
+CREATE TABLE IF NOT EXISTS TEMPLATE (
+  template_id      TEXT PRIMARY KEY,
+  current_version  INTEGER NOT NULL CHECK (current_version >= 1),
+  deleted_at       TEXT,
+  created_at       TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+  updated_at       TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now'))
+);
+
+CREATE TABLE IF NOT EXISTS TEMPLATE_VERSION (
+  template_id       TEXT NOT NULL REFERENCES TEMPLATE(template_id) ON DELETE CASCADE,
+  template_version  INTEGER NOT NULL CHECK (template_version >= 1),
+  payload_json      TEXT NOT NULL,
+  created_at        TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+  PRIMARY KEY (template_id, template_version)
+);
 `;
 
-async function getDb() {
-  if (dbInstance) return dbInstance;
-  dbInstance = await open({ filename: DB_PATH, driver: sqlite3.Database });
-  await dbInstance.exec(SCHEMA_SQL);
-  return dbInstance;
+// DB tao truoc khi co DeepSeek giu CHECK cu (chi 3 hang) - SQLite khong sua
+// duoc CHECK nen dung lai bang, chep nguyen du lieu (key/model da luu).
+// Idempotent: chi chay khi DDL hien tai chua co 'deepseek'.
+async function migrateProviderCheck(db) {
+  for (const table of ['LLM_SETTINGS', 'LLM_MODEL']) {
+    const row = await db.get("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?", [table]);
+    if (!row || row.sql.includes("'deepseek'")) continue;
+    const newSql = row.sql
+      .replace("('openai','anthropic','gemini')", "('openai','anthropic','gemini','deepseek')")
+      .replace(/CREATE TABLE\s+(?:IF NOT EXISTS\s+)?\w+/i, `CREATE TABLE ${table}_NEW`);
+    await db.exec('BEGIN IMMEDIATE');
+    try {
+      await db.exec(newSql);
+      await db.exec(`INSERT INTO ${table}_NEW SELECT * FROM ${table}`);
+      await db.exec(`DROP TABLE ${table}`);
+      await db.exec(`ALTER TABLE ${table}_NEW RENAME TO ${table}`);
+      await db.exec('COMMIT');
+    } catch (err) {
+      await db.exec('ROLLBACK');
+      throw err;
+    }
+  }
+}
+
+// Giu promise khoi tao (khong phai ket noi tran): cac request den cung luc khi
+// server vua mo phai cho schema + migration xong, neu khong transaction cua
+// request se chen vao giua transaction migration ("transaction within a transaction").
+let dbReady = null;
+function getDb() {
+  if (!dbReady) {
+    dbReady = (async () => {
+      const db = await open({ filename: DB_PATH, driver: sqlite3.Database });
+      await db.exec(SCHEMA_SQL);
+      await migrateProviderCheck(db);
+      dbInstance = db;
+      return db;
+    })().catch(err => { dbReady = null; throw err; });
+  }
+  return dbReady;
 }
 
 async function closeDb() {
-  if (dbInstance) {
-    await dbInstance.close();
-    dbInstance = null;
+  const pending = dbReady;
+  dbReady = null;
+  dbInstance = null;
+  if (pending) {
+    const db = await pending.catch(() => null);
+    if (db) await db.close();
   }
 }
 

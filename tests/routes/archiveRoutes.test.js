@@ -76,6 +76,38 @@ describe('POST /api/archive', () => {
       expect(res.body.exam.blocks).toEqual(BLOCKS);
       expect(res.body.exam.subject).toBe('Toan');
     });
+
+    test('template snapshot survives save, legacy autosave, and explicit clearing', async () => {
+      const app = buildApp();
+      const binding = {
+        schema_version: 1, template_id: 'builtin.t01', template_version: 1,
+        template_snapshot: { sections: [{ section_id: 's1', slots: [{ slot_id: 'q1', points: '1.00' }] }] },
+        asset_manifest: [{ asset_id: 'sha256:abc', local_availability: 'missing' }]
+      };
+      const saved = await request(app).post('/api/archive').send(examBody({ template_binding: binding }));
+      expect((await request(app).get(`/api/archive/${saved.body.exam_id}`)).body.exam.template_binding).toEqual(binding);
+      await request(app).post('/api/archive').send(examBody({ exam_id: saved.body.exam_id, title: 'Legacy autosave' }));
+      expect((await request(app).get(`/api/archive/${saved.body.exam_id}`)).body.exam.template_binding).toEqual(binding);
+      await request(app).post('/api/archive').send(examBody({ exam_id: saved.body.exam_id, template_binding: null }));
+      expect((await request(app).get(`/api/archive/${saved.body.exam_id}`)).body.exam.template_binding).toBeNull();
+    });
+
+    test('template asset references become a checksum manifest with an explicit missing-asset fallback', async () => {
+      const app = buildApp();
+      const imageId = `image-${'b'.repeat(64)}`;
+      const documentId = `document-${'c'.repeat(64)}`;
+      const binding = {
+        schema_version: 1, template_id: 'custom.imported', template_version: 1,
+        template_snapshot: { appearance: { background: { source_asset_id: documentId, pages: [{ page_number: 3, asset_id: imageId }] } }, sections: [{ section_id: 's1', slots: [{ slot_id: 'q1', assets: [{ asset_id: `image-${'d'.repeat(64)}` }] }] }] },
+        asset_manifest: []
+      };
+      const saved = await request(app).post('/api/archive').send(examBody({ template_binding: binding }));
+      const result = (await request(app).get(`/api/archive/${saved.body.exam_id}`)).body.exam.template_binding.asset_manifest;
+      expect(result).toHaveLength(3);
+      expect(result.find(asset => asset.asset_id === documentId)).toMatchObject({ kind: 'document', sha256: 'c'.repeat(64), role: 'source_document', transfer: 'reference_only' });
+      expect(result.find(asset => asset.asset_id === imageId)).toMatchObject({ page_number: 3, role: 'page_background', fallback: expect.any(String) });
+      expect(result.find(asset => asset.role === 'question_illustration').local_availability).toBe('not_verified');
+    });
   });
 
   describe('Negative Cases', () => {
@@ -156,5 +188,24 @@ describe('DELETE /api/archive/:id (xoa mem)', () => {
 
     const list = await request(app).get('/api/archive');
     expect(list.body.exams.find(e => e.exam_id === id)).toBeUndefined();
+  });
+
+  test('TC-ARC-BG-01: luu/doc nen gan vao de; client khong gui background thi giu nen cu; null thi go', async () => {
+    const app = buildApp();
+    const bg = { file: 'image-abc.png', opacity: 0.4, fit: 'contain' };
+    const created = await request(app).post('/api/archive').send(examBody({ background: bg }));
+    expect(created.body.success).toBe(true);
+    const id = created.body.exam_id;
+    expect((await request(app).get(`/api/archive/${id}`)).body.exam.background).toEqual(bg);
+    await request(app).post('/api/archive').send(examBody({ exam_id: id, title: 'Doi ten' }));
+    expect((await request(app).get(`/api/archive/${id}`)).body.exam.background).toEqual(bg);
+    await request(app).post('/api/archive').send(examBody({ exam_id: id, background: null }));
+    expect((await request(app).get(`/api/archive/${id}`)).body.exam.background).toBeNull();
+  });
+
+  test('TC-ARC-BG-02: background sai (duong dan, do mo) -> 400', async () => {
+    const app = buildApp();
+    expect((await request(app).post('/api/archive').send(examBody({ background: { file: '../secret.png', opacity: 0.3 } }))).status).toBe(400);
+    expect((await request(app).post('/api/archive').send(examBody({ background: { file: 'a.png', opacity: 5 } }))).status).toBe(400);
   });
 });

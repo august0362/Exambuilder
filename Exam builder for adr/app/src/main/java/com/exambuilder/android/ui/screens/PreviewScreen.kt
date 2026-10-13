@@ -62,10 +62,13 @@ import com.exambuilder.android.export.trueFalseLabel
 import com.exambuilder.android.math.MathText
 import com.exambuilder.android.model.Question
 import com.exambuilder.android.model.QuestionType
+import com.exambuilder.android.model.TemplateSlot
+import com.exambuilder.android.model.templateLayout
 import com.exambuilder.android.viewmodel.ExamViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.JsonArray
 
 /**
  * Read-only render of the exam. Questions are numbered continuously 1..N
@@ -92,6 +95,7 @@ fun PreviewScreen(viewModel: ExamViewModel) {
         exam.blocks.map { block -> block to block.questions.map { q -> ++n to q } }
     }
     val total = remember(exam) { exam.blocks.sumOf { it.questions.size } }
+    val layout = remember(exam) { exam.templateLayout() }
 
     fun runExport(kind: ExportKind) {
         if (busy) return
@@ -165,21 +169,45 @@ fun PreviewScreen(viewModel: ExamViewModel) {
             contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 40.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
+            if (exam.templateBinding != null) {
+                item(key = "template_fallback") {
+                    val assetCount = (exam.templateBinding["asset_manifest"] as? JsonArray)?.size ?: 0
+                    Column {
+                        Text(
+                            if (layout == null) "Template được giữ khi lưu/đồng bộ. Cấu trúc câu hiện khác snapshot nên Android dùng bố cục cơ bản."
+                            else "Android dùng điểm, vùng trả lời và khổ giấy từ template khi có thể; nền và bố cục nhiều cột chưa được áp dụng.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        if (assetCount > 0) Text(
+                            "$assetCount tài nguyên nền/hình minh họa chỉ có tham chiếu, chưa tải cùng Gist. Nội dung đề được giữ nguyên; dùng bố cục cơ bản trên thiết bị này.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
             item(key = "exam_header") { ExamHeaderCard(exam.title, exam.subject, exam.durationMinutes, exam.schoolHeader, total, studentMode) }
 
-            numbered.forEach { (block, questions) ->
+            numbered.forEachIndexed { blockIndex, (block, questions) ->
                 item(key = "hdr_${block.id}") {
-                    Text(
-                        "${block.blockTitle}  ·  ${questions.size} câu",
-                        style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.padding(top = 8.dp, bottom = 2.dp)
-                    )
+                    Column {
+                        Text(
+                            "${block.blockTitle}  ·  ${questions.size} câu",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(top = 8.dp, bottom = 2.dp)
+                        )
+                        if (layout?.sections?.size == exam.blocks.size) {
+                            layout.sections[blockIndex].stimulus?.let { passage -> MathText(passage) }
+                        }
+                    }
                 }
                 items(questions, key = { it.second.id }) { (number, question) ->
                     QuestionCard(
                         number = number,
                         question = question,
+                        slot = layout?.slotFor(question, number - 1),
                         studentMode = studentMode,
                         expanded = question.id in expanded,
                         onToggle = {
@@ -239,6 +267,7 @@ private fun ExamHeaderCard(
 private fun QuestionCard(
     number: Int,
     question: Question,
+    slot: TemplateSlot?,
     studentMode: Boolean,
     expanded: Boolean,
     onToggle: () -> Unit,
@@ -257,6 +286,7 @@ private fun QuestionCard(
                 NumberBadge(number)
                 Spacer(Modifier.weight(1f))
                 AssistChip(onClick = {}, label = { Text(question.difficultyLevel.label) })
+                slot?.points?.takeIf { it.isNotBlank() }?.let { Text("$it điểm", style = MaterialTheme.typography.labelSmall) }
             }
 
             MathText(
@@ -277,9 +307,9 @@ private fun QuestionCard(
                         )
                     }
                 }
-                QuestionType.ESSAY -> if (question.draftLinesCount > 0) {
+                QuestionType.ESSAY -> if ((slot?.answerLines ?: question.draftLinesCount) > 0) {
                     Text(
-                        "Trả lời:  (${question.draftLinesCount} dòng)",
+                        "Trả lời: (${slot?.answerLines ?: question.draftLinesCount} dòng${slot?.answerKind?.let { ", $it" } ?: ""})",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )

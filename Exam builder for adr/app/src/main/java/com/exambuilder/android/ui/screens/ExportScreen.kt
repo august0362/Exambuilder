@@ -37,6 +37,7 @@ import com.exambuilder.android.export.PDF_MIME
 import com.exambuilder.android.export.PdfExporter
 import com.exambuilder.android.export.shareExportedFile
 import com.exambuilder.android.viewmodel.ExamViewModel
+import com.exambuilder.android.model.templateLayout
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -89,6 +90,15 @@ fun ExportScreen(viewModel: ExamViewModel) {
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
+
+        if (exam.templateBinding != null) {
+            Text(
+                if (exam.templateLayout() == null) "Cấu trúc câu khác snapshot template; Android xuất nội dung với bố cục cơ bản. Snapshot vẫn được giữ khi lưu/đồng bộ."
+                else "Android áp dụng khổ giấy, lề, điểm và vùng trả lời từ template khi xuất; nền và bố cục nhiều cột chưa được áp dụng.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
 
         Card(Modifier.fillMaxWidth()) {
             Row(

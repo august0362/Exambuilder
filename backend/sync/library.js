@@ -54,7 +54,7 @@ function pickNewerTheme(primary, secondary) {
  */
 function normalizeExam(raw) {
   if (!raw || typeof raw !== 'object' || !raw.exam_id) return null;
-  return {
+  const exam = {
     exam_id: String(raw.exam_id),
     title: raw.title == null ? '' : String(raw.title),
     subject: raw.subject == null ? '' : String(raw.subject),
@@ -65,6 +65,18 @@ function normalizeExam(raw) {
     updated_at: toIso(raw.updated_at) || toIso(raw.created_at) || nowIso(),
     deleted_at: toIso(raw.deleted_at)
   };
+  // Keep the optional render-critical snapshot as JSON data. Binary assets belong
+  // in the asset store and are represented here only by manifest references.
+  if (raw.template_binding && typeof raw.template_binding === 'object' && !Array.isArray(raw.template_binding)) {
+    exam.template_binding = raw.template_binding;
+  }
+  // Nen gan vao de (ten file anh trong resources/backgrounds): anh khong di
+  // theo Gist, may kia thieu anh thi de van mo binh thuong, chi khong co nen.
+  if (raw.background && typeof raw.background === 'object' && !Array.isArray(raw.background) &&
+      typeof raw.background.file === 'string' && raw.background.file) {
+    exam.background = { file: raw.background.file, opacity: Number(raw.background.opacity) || 0.3, fit: raw.background.fit === 'contain' ? 'contain' : 'cover' };
+  }
+  return exam;
 }
 
 /**
@@ -86,6 +98,8 @@ function rowsToLibrary(rows) {
       duration_minutes: row.duration_minutes != null ? row.duration_minutes : payload.duration_minutes,
       school_header: row.school_header != null ? row.school_header : payload.school_header,
       blocks: payload.blocks,
+      template_binding: payload.template_binding,
+      background: payload.background,
       created_at: row.created_at,
       updated_at: row.updated_at,
       deleted_at: row.deleted_at
@@ -114,7 +128,9 @@ function libraryToRows(library) {
         subject: e.subject,
         duration_minutes: e.duration_minutes,
         school_header: e.school_header,
-        blocks: e.blocks
+        blocks: e.blocks,
+        ...(e.template_binding ? { template_binding: e.template_binding } : {}),
+        ...(e.background ? { background: e.background } : {})
       }),
       created_at: e.created_at,
       updated_at: e.updated_at,

@@ -50,7 +50,12 @@ export function allocateForCodes(pool, q) {
 // Dung chung cho ca luc sinh de goc (chi xao options, giu nguyen id) lan
 // luc nhan ban cho tung ma de (can id moi, xem cloneQuestionForCode).
 export function shuffleMCQOptions(question) {
-  const shuffledOptions = fisherYatesShuffle(question.options);
+  // Du lieu nhap ngoai (JSON...) co the thieu is_correct: suy ra tu
+  // correct_answer TRUOC khi xao, neu khong dap an se giu chu cai cu -> sai.
+  const options = question.options.some(o => o.is_correct)
+    ? question.options
+    : question.options.map(o => ({ ...o, is_correct: o.option_key === String(question.correct_answer || '').trim().toUpperCase() }));
+  const shuffledOptions = fisherYatesShuffle(options);
   const keys = ['A', 'B', 'C', 'D', 'E', 'F'].slice(0, shuffledOptions.length);
   const newOptions = shuffledOptions.map((opt, i) => ({
     option_key: keys[i],

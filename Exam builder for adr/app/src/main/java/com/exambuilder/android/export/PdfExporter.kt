@@ -15,6 +15,7 @@ import com.exambuilder.android.math.parseMathNodes
 import com.exambuilder.android.model.Exam
 import com.exambuilder.android.model.Question
 import com.exambuilder.android.model.QuestionType
+import com.exambuilder.android.model.templateLayout
 import java.io.File
 import java.io.FileOutputStream
 
@@ -58,7 +59,8 @@ object PdfExporter {
 
     fun export(context: Context, exam: Exam, studentMode: Boolean = false): Uri {
         val doc = PdfDocument()
-        val w = PageWriter(doc)
+        val layout = exam.templateLayout()
+        val w = PageWriter(doc, layout?.paper)
 
         if (exam.schoolHeader.isNotBlank()) w.centered(exam.schoolHeader, SUBTITLE)
         w.centered(exam.title.ifBlank { "Đề kiểm tra" }, TITLE)
@@ -73,15 +75,19 @@ object PdfExporter {
         w.gap(0.4f)
 
         var counter = 0
-        exam.blocks.forEach { block ->
+        exam.blocks.forEachIndexed { blockIndex, block ->
             w.ensure(LINE * 3)
             w.line(block.blockTitle, HEADING)
+            if (layout?.sections?.size == exam.blocks.size) {
+                layout.sections[blockIndex].stimulus?.let { w.line(it, BODY) }
+            }
             w.gap(0.2f)
 
             block.questions.forEach { q ->
                 counter++
                 w.ensure(LINE * 3)
                 w.flow("Câu $counter. ", BODY_BOLD, q.content, BODY)
+                layout?.slotFor(q, counter - 1)?.points?.takeIf { it.isNotBlank() }?.let { w.line("     ($it điểm)", MUTED) }
 
                 when (q.questionType) {
                     QuestionType.MCQ -> q.options.forEach { opt ->
@@ -103,8 +109,9 @@ object PdfExporter {
                             w.flow("     Đáp án: ", ANSWER, q.correctAnswer, ANSWER)
                         }
                     }
-                    QuestionType.ESSAY -> repeat(q.draftLinesCount.coerceIn(0, 30)) {
-                        w.line("     .............................................................................", MUTED)
+                    QuestionType.ESSAY -> {
+                        val slot = layout?.slotFor(q, counter - 1)
+                        w.answerSpace(slot?.answerKind ?: "lined", slot?.answerLines ?: q.draftLinesCount.coerceIn(0, 30))
                     }
                 }
 
@@ -149,30 +156,34 @@ object PdfExporter {
  * Cursor over a growing [PdfDocument]; wraps text to the content width and
  * starts a new page when the current one is full.
  */
-private class PageWriter(private val doc: PdfDocument) {
-    private val left = MARGIN
-    private val right = PAGE_W - MARGIN
+private class PageWriter(private val doc: PdfDocument, paper: com.exambuilder.android.model.TemplatePaper?) {
+    private val width = paper?.widthPt ?: PAGE_W
+    private val height = paper?.heightPt ?: PAGE_H
+    private val top = paper?.topPt ?: MARGIN
+    private val bottom = paper?.bottomPt ?: MARGIN
+    private val left = paper?.leftPt ?: MARGIN
+    private val right = width - (paper?.rightPt ?: MARGIN)
     private val contentW = right - left
     private var page = newPage()
     private var canvas = page.canvas
-    private var y = MARGIN
+    private var y = top
     private var pageNo = 1
 
     private fun newPage(): PdfDocument.Page =
-        doc.startPage(PdfDocument.PageInfo.Builder(PAGE_W, PAGE_H, doc.pages.size + 1).create())
+        doc.startPage(PdfDocument.PageInfo.Builder(width, height, doc.pages.size + 1).create())
 
     fun ensure(extra: Float) {
-        if (y + extra <= PAGE_H - MARGIN) return
+        if (y + extra <= height - bottom) return
         stampFooter()
         doc.finishPage(page)
         page = newPage()
         canvas = page.canvas
-        y = MARGIN
+        y = top
         pageNo++
     }
 
     private fun stampFooter() {
-        canvas.drawText("Trang $pageNo", PAGE_W / 2f - 18f, PAGE_H - MARGIN + 22f, MUTED)
+        canvas.drawText("Trang $pageNo", width / 2f - 18f, height - bottom + 12f, MUTED)
     }
 
     fun gap(lines: Float) {
@@ -188,7 +199,7 @@ private class PageWriter(private val doc: PdfDocument) {
     fun centered(text: String, p: Paint) {
         wrap(text, p, contentW).forEach {
             ensure(LINE)
-            canvas.drawText(it, (PAGE_W - p.measureText(it)) / 2f, y, p)
+            canvas.drawText(it, (width - p.measureText(it)) / 2f, y, p)
             y += LINE
         }
     }
@@ -197,6 +208,27 @@ private class PageWriter(private val doc: PdfDocument) {
         wrap(text, p, contentW).forEach {
             ensure(LINE)
             canvas.drawText(it, left, y, p)
+            y += LINE
+        }
+    }
+
+    fun answerSpace(kind: String, lines: Int) {
+        repeat(lines.coerceIn(0, 30)) {
+            ensure(LINE)
+            when (kind) {
+                "blank", "none" -> Unit
+                "drawing" -> {
+                    canvas.drawLine(left, y - LINE * 0.7f, right, y - LINE * 0.7f, MUTED)
+                    canvas.drawLine(left, y - LINE * 0.7f, left, y + LINE * 0.3f, MUTED)
+                    canvas.drawLine(right, y - LINE * 0.7f, right, y + LINE * 0.3f, MUTED)
+                }
+                "squared", "table" -> {
+                    canvas.drawLine(left, y + LINE * 0.3f, right, y + LINE * 0.3f, MUTED)
+                    var x = left
+                    while (x <= right) { canvas.drawLine(x, y - LINE * 0.7f, x, y + LINE * 0.3f, MUTED); x += LINE }
+                }
+                else -> canvas.drawLine(left, y + LINE * 0.3f, right, y + LINE * 0.3f, MUTED)
+            }
             y += LINE
         }
     }

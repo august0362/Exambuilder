@@ -273,7 +273,7 @@ private fun buildQuestion(
     val normContent = MathConvert.normalizeInput(content)
     val normExplanation = MathConvert.normalizeInput(explanation).ifBlank { null }
 
-    return when (type) {
+    return (when (type) {
         QuestionType.MCQ -> {
             val relabeled = options.mapIndexed { i, o ->
                 o.copy(optionKey = ('A' + i).toString(), optionText = MathConvert.normalizeInput(o.optionText))
@@ -297,5 +297,5 @@ private fun buildQuestion(
             id = id, questionType = type, content = normContent, difficultyLevel = difficulty,
             explanation = normExplanation, draftLinesCount = essayLines.coerceIn(0, 30)
         )
-    }
+    }).copy(templateSlotId = base?.templateSlotId, points = base?.points)
 }

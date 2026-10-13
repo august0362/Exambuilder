@@ -1,10 +1,12 @@
 const express = require('express');
 const { getDb } = require('../database');
-const { createProvider } = require('../llm/ProviderFactory');
+const { createProvider, listModelsFor } = require('../llm/ProviderFactory');
+const { CLOUD_PROVIDER_IDS } = require('../llm/providerIds');
+const { withErrorHint } = require('../llm/errorHint');
 
 const router = express.Router();
 
-const VALID_PROVIDERS = ['openai', 'anthropic', 'gemini'];
+const VALID_PROVIDERS = CLOUD_PROVIDER_IDS;
 
 function maskKey(key) {
   if (!key || key.length < 8) return '***';
@@ -80,7 +82,31 @@ router.post('/llm/test', async (req, res) => {
     await providerInstance.generate('Tra loi ngan gon: OK');
     res.json({ success: true });
   } catch (err) {
-    res.status(502).json({ success: false, error: err.message });
+    res.status(502).json({ success: false, error: withErrorHint(err.message) });
+  }
+});
+
+router.post('/llm/models', async (req, res) => {
+  const { provider, api_key } = req.body;
+  if (!VALID_PROVIDERS.includes(provider)) {
+    return res.status(400).json({ success: false, error: `provider khong hop le: "${provider}"` });
+  }
+
+  const db = await getDb();
+  try {
+    let keyToUse = api_key && String(api_key).trim();
+    if (!keyToUse) {
+      const saved = await db.get('SELECT api_key FROM LLM_SETTINGS WHERE provider = ?', [provider]);
+      keyToUse = saved?.api_key;
+    }
+    if (!keyToUse) {
+      return res.status(400).json({ success: false, error: 'Chua co api_key de lay danh sach model (chua nhap hoac chua luu)' });
+    }
+
+    const models = await listModelsFor(provider, keyToUse);
+    res.json({ success: true, models });
+  } catch (err) {
+    res.status(502).json({ success: false, error: withErrorHint(err.message) });
   }
 });
 

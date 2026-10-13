@@ -4,6 +4,12 @@ Web App nội bộ giúp **giáo viên** biên soạn đề kiểm tra nhanh —
 
 Không có đăng nhập/đăng ký — mở ứng dụng lên là dùng được ngay.
 
+## Mẫu đề (bản đang phát triển)
+
+Chạy `npm start`, mở `http://localhost:3000`, chọn **Mẫu đề** trên thanh công cụ. Có đúng 10 mẫu gốc với số câu cố định; bấm **Tạo bản sao tùy chỉnh** để thêm/xóa/sắp xếp câu rồi lưu. Bên dưới mẫu có ba nhóm prompt (toàn đề, slot chọn, kiểm tra/sửa) và bộ chọn ChatGPT, Claude, Gemini, DeepSeek, Grok. Bấm **Copy Prompt**, dùng AI ngoài để sinh **văn bản**, dán kết quả vào ô kiểm tra, xem diff rồi xác nhận áp dụng. Không cần API key cho luồng này.
+
+Có thể tải ảnh nền PNG/JPG/WebP/SVG, nhập DOCX/PDF theo chế độ nhận diện text native và duyệt nội dung hoặc lưu tệp làm tài nguyên nền. PDF scan không được OCR; các vùng cần điền phải xử lý thủ công. Ảnh nền hiển thị trong preview web; tối đa 10 trang PDF đầu có thể chuyển thành PNG nền, nhưng vị trí vùng điền nhập tay chưa được áp đầy đủ khi xuất. DOCX nhập làm nền hiện chỉ lưu tệp gốc, chưa raster hóa. Bản DOCX theo mẫu có HS/GV/đáp án và thiết lập giấy; ảnh PNG/JPEG đã quản lý được nhúng làm nền hoặc minh họa, còn WebP/SVG và nền riêng trang giữa/cuối có fallback/cảnh báo. Giới hạn trang mới là ước lượng. **In / Lưu PDF** dùng hộp thoại in trình duyệt, cần kiểm tra bản in thật trước khi phát đề. Android giữ snapshot template, điểm và cấu hình giấy; nền/hai cột vẫn dùng fallback. Theo dõi phần đã hoàn tất và phần còn thiếu trong [TEMPLATE_SYSTEM_PROGRESS.md](./TEMPLATE_SYSTEM_PROGRESS.md).
+
 ---
 
 ## Mục lục
@@ -22,10 +28,10 @@ Không có đăng nhập/đăng ký — mở ứng dụng lên là dùng đượ
 
 Soạn một đề kiểm tra thủ công (gõ từng câu, canh dòng nháp cho tự luận, tô đáp án đúng, tách bản học sinh khỏi bản có đáp án...) tốn nhiều thời gian lặp lại mỗi kỳ thi. **ExamBuilder** giải quyết việc đó bằng cách:
 
-1. Chuẩn hoá một **định dạng văn bản** mà AI (Gemini Pro, hoặc bất kỳ LLM nào) có thể sinh ra hàng loạt câu hỏi đúng cấu trúc (xem [`Gemini_Prompt_Unified.txt`](./Gemini_Prompt_Unified.txt)).
+1. Chuẩn hoá một **định dạng văn bản** mà AI (Gemini Pro, hoặc bất kỳ LLM nào) có thể sinh ra hàng loạt câu hỏi đúng cấu trúc (xem [`Gemini_Prompt_Unified.txt`](../Gemini_Prompt_Unified.txt)).
 2. **Phân tích (parse)** định dạng đó — hoặc tệp JSON/CSV/TXT, hoặc dữ liệu nhập tay — thành cấu trúc đề thi thống nhất.
 3. Hiển thị đề ở dạng **block trực quan** (Trắc nghiệm / Tự luận), cho phép giáo viên chỉnh sửa ngay trên bản xem trước, và **bật/tắt "Chế độ Học sinh"** để kiểm tra trước khi in — chế độ này ẩn hoàn toàn đáp án và lời giải.
-4. **Xuất** ra PDF (in trực tiếp) / Word (.docx) và **chia sẻ** đề qua một đường link.
+4. **Xuất** ra PDF (in trực tiếp) / Word (.docx) và **chia sẻ** đề qua một đường link. Link chia sẻ là bản **học sinh**: từ 13/10/2026 cả link `?data=` lẫn `GET /api/exams/shared/:code` đều bỏ đáp án, lời giải, `is_correct` và snapshot template (`backend/parser/examRedaction.js`); bản lưu của giáo viên không bị thay đổi.
 
 ## 2. Kiến trúc tổng thể
 
@@ -98,19 +104,22 @@ exam-builder/
 │   ├── index.html             # Layout: toolbar, tab input, khu preview, prompt reference, modal share/cài đặt/lịch sử
 │   ├── style.css              # Theme engine: 18 chủ đề [data-theme] (16 sáng + 2 tối) + --ui-scale, responsive, @media print
 │   ├── script.js               # State, render đề (số câu liên tục), sửa trực tiếp, export/share, nhiều mã đề, kho đề, giao diện
-│   └── promptTemplate.js       # TỰ SINH từ Gemini_Prompt_Unified.txt (tools/gen-prompt-module.js) — đừng sửa tay
+│   ├── promptTemplate.js       # TỰ SINH từ Gemini_Prompt_Unified.txt (tools/gen-prompt-module.js) — đừng sửa tay
+│   └── promptVariants.js      # TỰ SINH từ AI_Prompts_Variants.txt (tools/gen-prompt-variants.js) — đừng sửa tay; 1 prompt/AI (Gemini/Gemini Pro/ChatGPT/DeepSeek/Claude/Grok)
 ├── resources/
 │   ├── backgrounds/            # Ảnh nền PDF (.png/.jpg/.svg) — xem mục 4.1
 │   └── image/                  # icon.png + gen-android-icons.js (sinh app icon Android)
 ├── tools/
-│   └── gen-prompt-module.js   # Sinh lại frontend/promptTemplate.js từ Gemini_Prompt_Unified.txt
+│   ├── gen-prompt-module.js   # Sinh lại frontend/promptTemplate.js từ Gemini_Prompt_Unified.txt
+│   └── gen-prompt-variants.js # Sinh lại frontend/promptVariants.js từ AI_Prompts_Variants.txt + quy tắc dùng chung
 ├── tests/                      # Bộ test Jest + Supertest (xem mục 6)
-├── Gemini_Prompt_Unified.txt  # META-PROMPT: nguồn DUY NHẤT của prompt (dán vào Gemini/ChatGPT/Claude)
+├── Gemini_Prompt_Unified.txt  # META-PROMPT: nguồn DUY NHẤT của quy tắc định dạng (dùng chung cho mọi AI)
+├── AI_Prompts_Variants.txt    # Nguồn riêng theo từng AI: câu giới thiệu, lưu ý riêng, ví dụ mẫu (môn học khác nhau)
 ├── babel.config.cjs            # Cấu hình Babel (chỉ dùng để Jest hiểu cú pháp ESM)
 └── package.json
 ```
 
-> **Prompt là một meta-prompt hợp nhất.** [`Gemini_Prompt_Unified.txt`](./Gemini_Prompt_Unified.txt)
+> **Prompt là một meta-prompt hợp nhất.** [`Gemini_Prompt_Unified.txt`](../Gemini_Prompt_Unified.txt)
 > đặc tả đầy đủ định dạng đầu ra mà `backend/parser/TextPromptParser.js` đọc được: 2 phần
 > `=PHAN_1_TRAC_NGHIEM=` / `=PHAN_2_TU_LUAN=`, thẻ `[CAU_HOI]`, các trường
 > `Loai/Muc_Do/De_Bai/Dap_An/Loi_Giai/So_Dong_Nhap`, ràng buộc từng loại câu (TN/DUNG_SAI/DIEN_TU/TU_LUAN),
@@ -118,6 +127,15 @@ exam-builder/
 > markdown, không khối mã". `PHẦN 2` được `promptBuilder.js` trích nguyên văn cho luồng "Sinh đề tự động",
 > và `tools/gen-prompt-module.js` (`npm run gen:prompt`) sinh lại `frontend/promptTemplate.js` từ nó —
 > **chỉ sửa prompt ở file `.txt`.**
+>
+> **Mỗi AI dán tay còn có một prompt riêng.** Khu "Prompt mẫu cho AI" trên frontend cho chọn giữa
+> Gemini (thường) / Gemini Pro / ChatGPT / DeepSeek / Claude / Grok — cùng dùng chung quy tắc định
+> dạng ở trên, nhưng mỗi AI có thêm 1 đoạn lưu ý riêng (đối phó xu hướng riêng của AI đó, ví dụ ChatGPT
+> hay tự bọc khối mã, DeepSeek hay lộ phần suy luận `<think>`, Gemini Pro tận dụng ngữ cảnh dài) và
+> 1 ví dụ mẫu riêng (mỗi AI một môn học khác nhau để minh hoạ prompt dùng được cho mọi môn). Nguồn ở
+> [`AI_Prompts_Variants.txt`](../AI_Prompts_Variants.txt),
+> sinh lại `frontend/promptVariants.js` bằng `tools/gen-prompt-variants.js` (đã gộp vào `npm run gen:prompt`)
+> — **chỉ sửa ở file `.txt`, không hand-edit `promptVariants.js`.**
 
 > Các thư viện xuất/nhập file (`docx` để xuất Word, `mammoth` để đọc `.docx` tải lên) được cài như dependency thường và phục vụ tĩnh qua `/vendor/docx/...` và `/vendor/mammoth/...` — không phụ thuộc CDN ngoài. Không dùng thư viện đọc Excel (`.xlsx`) do các lựa chọn phổ biến trên npm đều có lỗ hổng bảo mật chưa được vá (xem mục 7).
 
@@ -288,7 +306,7 @@ sequenceDiagram
 | **Xuất Word** | Bấm "Xuất Word" | Tệp `.docx` tải về, gồm đề bài + (nếu ở Chế độ Giáo viên) đáp án/lời giải |
 | **Chia sẻ đề** | Bấm "Tạo Link Chia Sẻ" | Một URL: `?data=<base64>` (đề ngắn) hoặc `?code=<8-hex>` (đề dài, lưu server) — mở lên tự vào Chế độ Học sinh |
 | **Thu hồi link** | Bấm "Thu hồi link" trong modal chia sẻ (chỉ khả dụng với link dạng `?code=`) | Link bị vô hiệu hoá vĩnh viễn — mở lại sẽ báo lỗi |
-| **Prompt mẫu cho AI** | Khu "Prompt mẫu cho AI" dưới layout chính (badge 4 loại câu hỏi + accordion) | Nút "Copy Prompt"/"Copy Ví dụ" sao chép 1-click vào clipboard, kèm thông báo xác nhận |
+| **Prompt mẫu cho AI** | Khu "Prompt mẫu cho AI" dưới layout chính (badge 4 loại câu hỏi + accordion) | Tab chọn AI (Gemini/Gemini Pro/ChatGPT/DeepSeek/Claude/Grok) — mỗi tab 1 prompt + ví dụ riêng; nút "Copy Prompt"/"Copy Ví dụ" sao chép 1-click vào clipboard, kèm thông báo xác nhận |
 | **Trộn & Tạo nhiều mã đề** | Panel "Trộn & Tạo nhiều mã đề" (số mã đề `q`, số bắt đầu, tiền tố) sau khi đã "Sinh Đề Kiểm Tra" | `q` mã đề (tab riêng trong Preview) — câu hỏi chia đều `floor(total/q)` theo từng cặp (loại × mức độ) riêng biệt, nên tỉ lệ Nhận biết/Thông hiểu/Vận dụng/Vận dụng cao trong mỗi loại câu hỏi đồng đều giữa các mã (không mã nào toàn câu dễ/toàn câu khó), không trùng lặp giữa các mã cho tới khi hết nguồn; đáp án trắc nghiệm A/B/C/D được xáo lại độc lập cho từng mã. Xuất PDF/Word tự động gồm tất cả mã đề (ngắt trang giữa các mã) |
 | **Sinh đề tự động bằng LLM** | Tab "Sinh đề tự động": chọn model (đã cấu hình ở "⚙️ Cài đặt"), chọn tài liệu/Phần tham khảo hoặc nhập chủ đề, nhập số câu theo loại × mức độ | Đề được LLM sinh ra, tự parse và hiển thị ngay trong Preview như các cách nhập khác — xem chi tiết mục 4.2 |
 | **Kho đề (lịch sử) + Đồng bộ Gist** | Nút "📚 Lịch sử" trên toolbar. Mọi đề vừa sinh/sửa **tự động** vào kho. Cấu hình 1 GitHub token (quyền `gist`) + 1 Gist ID dùng chung cho PC và Android | Danh sách đề đã lưu (mở lại / xóa cục bộ); **⬆️ Đẩy lên** (máy → Gist) / **⬇️ Kéo về** (Gist → máy) để chuyển đề qua lại giữa web PC và app Android — xem chi tiết mục 4.3 |
@@ -329,7 +347,7 @@ Cho phép giáo viên bấm 1 nút để LLM tự sinh câu hỏi thay vì phả
 1. Trong modal **"⚙️ Cài đặt"**: nhập API key cho OpenAI/Anthropic/Gemini (lưu server-side, không bao giờ trả full key về trình duyệt), đăng ký model cloud (tên model API + tên hiển thị), hoặc tải lên model chạy local dạng `.gguf` (chạy qua [`node-llama-cpp`](https://github.com/withcatai/node-llama-cpp) ngay trong tiến trình Node — không cần cài thêm phần mềm ngoài).
 2. (Tùy chọn) Trong tab **"Sinh đề tự động"**, mở khu **"📚 Quản lý thư viện tài liệu"**: tạo 1 tài liệu tham khảo, tự chia thành các **Phần** (giáo viên tự đặt ranh giới nội dung, ví dụ theo chương/bài).
 3. Chọn **Model**, chọn tài liệu + các **Phần** muốn dùng làm ngữ cảnh (hoặc bỏ trống và chỉ nhập **Chủ đề**), nhập số lượng câu hỏi theo từng loại × mức độ trong bảng, bấm **"🚀 Sinh đề tự động"**.
-4. Backend ghép prompt (tái sử dụng nguyên văn phần hướng dẫn định dạng trong [`Gemini_Prompt_Unified.txt`](./Gemini_Prompt_Unified.txt) + nội dung các Phần đã chọn + yêu cầu số lượng) → gọi provider đã chọn → chạy kết quả qua `TextPromptParser` (parser y hệt luồng dán tay) → nếu sai định dạng, tự động gửi lại lỗi cho LLM xin sửa (tối đa 2 lần) → trả đề về, hiển thị ngay trong Preview như các cách nhập khác.
+4. Backend ghép prompt (tái sử dụng nguyên văn phần hướng dẫn định dạng trong [`Gemini_Prompt_Unified.txt`](../Gemini_Prompt_Unified.txt) + nội dung các Phần đã chọn + yêu cầu số lượng) → gọi provider đã chọn → chạy kết quả qua `TextPromptParser` (parser y hệt luồng dán tay) → nếu sai định dạng, tự động gửi lại lỗi cho LLM xin sửa (tối đa 2 lần) → trả đề về, hiển thị ngay trong Preview như các cách nhập khác.
 
 **Giới hạn cần biết khi dùng model local (`.gguf`):**
 
@@ -438,7 +456,7 @@ Mở trình duyệt tại **http://localhost:3000**.
 
 **Quy trình sử dụng nhanh:**
 
-1. Mở [`Gemini_Prompt_Unified.txt`](./Gemini_Prompt_Unified.txt), copy prompt, thay chủ đề, dán vào Gemini Pro.
+1. Mở [`Gemini_Prompt_Unified.txt`](../Gemini_Prompt_Unified.txt), copy prompt, thay chủ đề, dán vào Gemini Pro.
 2. Copy kết quả AI trả về → dán vào tab **"Dán văn bản"** → bấm **"Sinh Đề Kiểm Tra"**.
 3. Kiểm tra/sửa đề ở khu xem trước; bật **"Chế độ Học sinh"** để xem bản không đáp án.
 4. Bấm **"Xuất PDF"**/**"Xuất Word"** để in, hoặc **"Tạo Link Chia Sẻ"** để gửi đề qua link.
@@ -452,7 +470,7 @@ npm run test:coverage # chạy kèm báo cáo coverage
 
 ## 6. Kiểm thử (Testing)
 
-Framework: **Jest** (unit + integration) + **Supertest** (test API qua HTTP thật, không mock Express). Chi tiết đầy đủ về từng test case nằm trực tiếp trong code tại thư mục [`tests/`](./tests/).
+Framework: **Jest** (unit + integration) + **Supertest** (test API qua HTTP thật, không mock Express). Chi tiết đầy đủ về từng test case nằm trực tiếp trong code tại thư mục [`tests/`](../tests/).
 
 | File test | Đối tượng | Số ca | Coverage (statements) |
 |---|---|---|---|
@@ -466,6 +484,7 @@ Framework: **Jest** (unit + integration) + **Supertest** (test API qua HTTP th�
 | `tests/routes/examRoutes.adversarial.test.js` | Fuzz API: race condition, prototype pollution, mass assignment, boundary | 25 | — |
 | `tests/llm/promptBuilder.test.js` | Ghép prompt từ template + ngữ cảnh + yêu cầu số lượng | 8 | 100% |
 | `tests/llm/promptTemplate.test.js` | Meta-prompt: `promptTemplate.js` đồng bộ với `Gemini_Prompt_Unified.txt`, giữ đủ mốc định dạng, LaTeX không hỏng, và ví dụ PHẦN 3 parse được đủ 4 loại câu | 5 | — |
+| `tests/llm/promptVariants.test.js` | `promptVariants.js` (6 AI): đủ 6 bien the, moi bien the chua nguyen van quy tac dinh dang dung chung + doan luu y rieng khac nhau, LaTeX khong hong, va vi du rieng cua tung AI deu parse duoc du 4 loai cau | 11 | — |
 | `tests/llm/ProviderFactory.test.js` | Chọn đúng provider theo model đã đăng ký | 9 | 100% |
 | `tests/routes/settingsRoutes.test.js` | REST API cấu hình API key LLM (đọc/lưu/kiểm tra kết nối) | 11 | — |
 | `tests/routes/modelRoutes.test.js` | REST API quản lý model (cloud + upload `.gguf` local) | 11 | — |

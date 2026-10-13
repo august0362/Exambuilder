@@ -10,7 +10,7 @@ const router = express.Router();
 // Cho phep tro toi 1 thu muc tam khi test (giong EXAM_DB_PATH trong
 // backend/database.js), tranh ghi file that vao resources/models/ that.
 const MODELS_DIR = process.env.LLM_MODELS_DIR || path.join(__dirname, '..', '..', 'resources', 'models');
-const VALID_CLOUD_PROVIDERS = ['openai', 'anthropic', 'gemini'];
+const { CLOUD_PROVIDER_IDS: VALID_CLOUD_PROVIDERS } = require('../llm/providerIds');
 const MAX_MODEL_FILE_BYTES = 8 * 1024 * 1024 * 1024; // 8GB
 
 const storage = multer.diskStorage({

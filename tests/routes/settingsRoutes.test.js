@@ -2,7 +2,8 @@ process.env.EXAM_DB_PATH = ':memory:';
 
 const mockGenerate = jest.fn();
 jest.mock('../../backend/llm/ProviderFactory', () => ({
-  createProvider: jest.fn(() => ({ generate: mockGenerate }))
+  createProvider: jest.fn(() => ({ generate: mockGenerate })),
+  listModelsFor: jest.fn()
 }));
 
 const express = require('express');
@@ -10,7 +11,7 @@ const request = require('supertest');
 const { closeDb } = require('../../backend/database');
 const settingsRoutes = require('../../backend/routes/settingsRoutes');
 const { errorHandler } = require('../../backend/errorHandler');
-const { createProvider } = require('../../backend/llm/ProviderFactory');
+const { createProvider, listModelsFor } = require('../../backend/llm/ProviderFactory');
 
 function buildApp() {
   const app = express();
@@ -126,6 +127,53 @@ describe('POST /api/settings/llm/test', () => {
         provider: 'openai', api_key: 'sk-test'
       });
       expect(res.status).toBe(400);
+    });
+  });
+});
+
+describe('POST /api/settings/llm/models', () => {
+  describe('Happy Path', () => {
+    test('TC-SET-12: goi thanh cong tra ve danh sach model', async () => {
+      listModelsFor.mockResolvedValue([{ id: 'claude-3-5-haiku-20241022', display_name: 'Claude 3.5 Haiku' }]);
+      const res = await request(buildApp()).post('/api/settings/llm/models').send({
+        provider: 'anthropic', api_key: 'sk-ant-test'
+      });
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.models).toEqual([{ id: 'claude-3-5-haiku-20241022', display_name: 'Claude 3.5 Haiku' }]);
+      expect(listModelsFor).toHaveBeenCalledWith('anthropic', 'sk-ant-test');
+    });
+
+    test('TC-SET-13: khong truyen api_key thi dung key da luu truoc do', async () => {
+      const app = buildApp();
+      await request(app).post('/api/settings/llm').send({ provider: 'gemini', api_key: 'AIza-saved' });
+      listModelsFor.mockResolvedValue([]);
+
+      const res = await request(app).post('/api/settings/llm/models').send({ provider: 'gemini' });
+      expect(res.status).toBe(200);
+      expect(listModelsFor).toHaveBeenCalledWith('gemini', 'AIza-saved');
+    });
+  });
+
+  describe('Negative Cases', () => {
+    test('TC-SET-14: provider khong hop le tra ve 400', async () => {
+      const res = await request(buildApp()).post('/api/settings/llm/models').send({ provider: 'unknown' });
+      expect(res.status).toBe(400);
+    });
+
+    test('TC-SET-15: khong co api_key nao (chua nhap, chua luu) tra ve 400', async () => {
+      const res = await request(buildApp()).post('/api/settings/llm/models').send({ provider: 'openai' });
+      expect(res.status).toBe(400);
+    });
+
+    test('TC-SET-16: provider goi loi tra ve 502 kem thong bao loi', async () => {
+      listModelsFor.mockRejectedValue(new Error('Anthropic: loi API (HTTP 401)'));
+      const res = await request(buildApp()).post('/api/settings/llm/models').send({
+        provider: 'anthropic', api_key: 'sk-ant-bad'
+      });
+      expect(res.status).toBe(502);
+      expect(res.body.success).toBe(false);
+      expect(res.body.error).toMatch(/HTTP 401/);
     });
   });
 });

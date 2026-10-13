@@ -2,7 +2,8 @@ import { TextPromptParser } from '/parser/TextPromptParser.js';
 import { FileUploadParser } from '/parser/FileUploadParser.js';
 import { formatMathSymbols, latexToPlainText } from '/parser/mathFormat.js';
 import { generateExamCodes, shuffleAllMCQOptions } from '/parser/examCodeGenerator.js';
-import { EXAM_PROMPT_TEMPLATE, EXAM_PROMPT_EXAMPLE } from './promptTemplate.js';
+import { redactExamForStudent } from '/parser/examRedaction.js';
+import { AI_PROMPT_VARIANTS } from './promptVariants.js';
 
 // Ve noi dung toan hoc: MOI cau truc 2 chieu (can, phan so, can bac n, he
 // phuong trinh, tich phan...) deu duoc quy ve $...$ / $$...$$ LaTeX roi giao
@@ -72,7 +73,9 @@ const state = {
   activeShareCode: null,
   examVersions: [],
   activeVersionIndex: -1,
-  background: { enabled: false, file: '', opacity: 0.3 }
+  background: { enabled: false, file: '', opacity: 0.3, fit: 'cover' },
+  examBackground: null, // nen da gan va luu cung de dang mo ({ file, opacity, fit } | null)
+  template_binding: null
 };
 
 const versionContainers = new Map(); // code -> { el, blocks }
@@ -91,6 +94,7 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
     btn.classList.add('active');
     document.getElementById(`tab-${btn.dataset.tab}`).classList.add('active');
+    hideError(); // loi cua tab truoc khong lien quan tab moi
     // Tab "auto" co nut sinh de rieng (autoGenerateBtn) vi thao tac bat dong
     // bo (goi LLM) khac han cac tab con lai - an nut "Sinh De Kiem Tra" chung
     // de tranh nham lan khi dang o tab nay.
@@ -112,55 +116,223 @@ function applyBackgroundToPrintLayer() {
   if (active) {
     examPrintBgEl.style.backgroundImage = `url("/backgrounds/${encodeURIComponent(file)}")`;
     examPrintBgEl.style.opacity = String(opacity);
+    // Tam anh luon trung tam to giay (background-position: center trong CSS in).
+    examPrintBgEl.style.backgroundSize = state.background.fit === 'contain' ? 'contain' : 'cover';
   } else {
     examPrintBgEl.style.backgroundImage = '';
   }
+  // Hien nen ngay tren ban xem truoc (truoc day chi hien khi in).
+  examContainerEl.classList.toggle('has-screen-bg', active);
+  examContainerEl.style.setProperty('--exam-bg', active ? `url("/backgrounds/${encodeURIComponent(file)}")` : 'none');
+  examContainerEl.style.setProperty('--exam-bg-opacity', String(opacity));
 }
 
-async function loadBackgroundList() {
+// Dua dieu khien "Nen PDF" ve dung state.background (khi mo de da gan nen).
+function syncBackgroundControls() {
+  const { enabled, file, opacity, fit } = state.background;
+  bgEnableToggle.checked = enabled;
+  if (file && ![...bgSelect.options].some(o => o.value === file)) bgSelect.append(new Option(file, file));
+  bgSelect.value = file || '';
+  bgOpacityRange.value = String(Math.round(opacity * 100));
+  bgOpacityValue.textContent = `${Math.round(opacity * 100)}%`;
+  bgFitSelect.value = fit === 'contain' ? 'contain' : 'cover';
+  bgSelect.disabled = bgOpacityRange.disabled = bgFitSelect.disabled = !enabled;
+  bgPreviewBtn.disabled = !enabled || !file;
+  applyBackgroundToPrintLayer();
+}
+
+function updateExamBackgroundStatus() {
+  const el = document.getElementById('bgExamStatus');
+  document.getElementById('bgApplyToExamBtn').disabled = !state.blocks.length;
+  if (!state.blocks.length) { el.textContent = ''; return; }
+  const bg = state.examBackground;
+  const name = bg && ([...bgSelect.options].find(o => o.value === bg.file)?.textContent || bg.file);
+  el.textContent = bg ? `Đề đang mở đã gắn nền: ${name} (${Math.round(bg.opacity * 100)}%).` : 'Đề đang mở chưa gắn nền.';
+}
+
+// Mo de: nen da luu cung de duoc bat lai; de khong gan nen -> tat nen de
+// man hinh hien dung nhu de da luu.
+function restoreExamBackground(background) {
+  state.examBackground = background && background.file ? { file: background.file, opacity: Number(background.opacity) || 0.3, fit: background.fit === 'contain' ? 'contain' : 'cover' } : null;
+  state.background = state.examBackground ? { enabled: true, ...state.examBackground } : { ...state.background, enabled: false };
+  syncBackgroundControls();
+  updateExamBackgroundStatus();
+}
+
+// Danh sach anh trong resources/backgrounds. Anh tai len luu ten theo SHA-256
+// (image-<hash>.png) nen lay ten goc tu metadata /api/backgrounds/assets de hien thi.
+async function loadBackgroundList(selectFile) {
   try {
     const res = await fetch('/api/backgrounds');
     const files = res.ok ? await res.json() : [];
-    bgSelect.innerHTML = '<option value="">— Chọn ảnh nền —</option>' +
-      files.map(f => `<option value="${f}">${f}</option>`).join('');
-    if (files.length && !state.background.file) {
-      state.background.file = files[0];
-      bgSelect.value = files[0];
-    }
+    const names = new Map();
+    try {
+      const assets = await (await fetch('/api/backgrounds/assets')).json();
+      for (const a of assets.assets || []) if (a.filename) names.set(a.filename, a.original_name || a.filename);
+    } catch { /* khong co metadata: hien ten file */ }
+    const blank = new Option('— Chọn ảnh nền —', '');
+    const options = files.map(f => new Option(names.get(f) || f, f))
+      .sort((x, y) => x.text.localeCompare(y.text, 'vi', { numeric: true }));
+    bgSelect.replaceChildren(blank, ...options);
+    if (selectFile && files.includes(selectFile)) state.background.file = selectFile;
+    else if (files.length && !files.includes(state.background.file)) state.background.file = files[0];
+    bgSelect.value = state.background.file || '';
   } catch {
     // Khong co nen PDF nao kha dung - giu dropdown rong, khong chan luong chinh.
   }
 }
 loadBackgroundList();
 
+// Tai anh nen moi: anh -> /api/backgrounds/upload; PDF/Word -> moi trang thanh
+// mot anh (/api/backgrounds/import, mode=background) va chon trang 1.
+const bgUploadInput = document.getElementById('bgUploadInput');
+document.getElementById('bgUploadBtn').addEventListener('click', () => bgUploadInput.click());
+bgUploadInput.addEventListener('change', async () => {
+  const file = bgUploadInput.files[0];
+  if (!file) return;
+  hideError();
+  const isDocument = /\.(pdf|docx)$/i.test(file.name);
+  const form = new FormData();
+  form.append('file', file);
+  if (isDocument) form.append('mode', 'background');
+  const btn = document.getElementById('bgUploadBtn');
+  btn.disabled = true;
+  btn.textContent = '⏳ Đang tải...';
+  try {
+    const res = await fetch(isDocument ? '/api/backgrounds/import' : '/api/backgrounds/upload', { method: 'POST', body: form });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || data.success === false) throw new Error(data.error || `HTTP ${res.status}`);
+    let filename;
+    if (isDocument) {
+      const pages = data.background_pages || [];
+      if (!pages.length) throw new Error((data.warnings || []).join(' ') || 'Không tạo được ảnh trang từ tài liệu.');
+      filename = decodeURIComponent(pages[0].url.split('/').pop());
+      showCopyToast(`✅ Đã thêm ${pages.length} ảnh nền từ "${file.name}" (đang chọn trang 1).`, 5000);
+    } else {
+      filename = data.asset.filename;
+      showCopyToast(`✅ Đã thêm ảnh nền "${file.name}".`, 5000);
+    }
+    await loadBackgroundList(filename);
+    bgEnableToggle.checked = true;
+    bgEnableToggle.dispatchEvent(new Event('change'));
+  } catch (err) {
+    showError('Lỗi tải ảnh nền: ' + err.message);
+  } finally {
+    // Chi xoa o chon file SAU khi gui: trinh duyet doc file luc fetch, xoa som se 'Failed to fetch'.
+    bgUploadInput.value = '';
+    btn.disabled = false;
+    btn.textContent = '⬆️ Tải ảnh nền';
+  }
+});
+
 bgEnableToggle.addEventListener('change', () => {
   state.background.enabled = bgEnableToggle.checked;
   bgSelect.disabled = !bgEnableToggle.checked;
   bgOpacityRange.disabled = !bgEnableToggle.checked;
+  bgFitSelect.disabled = !bgEnableToggle.checked;
+  bgPreviewBtn.disabled = !bgEnableToggle.checked || !state.background.file;
   applyBackgroundToPrintLayer();
 });
 bgSelect.addEventListener('change', () => {
   state.background.file = bgSelect.value;
+  bgPreviewBtn.disabled = !bgEnableToggle.checked || !state.background.file;
   applyBackgroundToPrintLayer();
 });
+
+// Xem truoc nen tren to A4 (man hinh khong hien lop nen in) + cach dat anh.
+// Khong dung AI: tam anh trung tam to giay, phu kin (cat quanh tam) hoac giu ca anh.
+const bgFitSelect = document.getElementById('bgFitSelect');
+const bgPreviewBtn = document.getElementById('bgPreviewBtn');
+const bgPreviewDialog = document.getElementById('bgPreviewDialog');
+const A4_RATIO = 210 / 297;
+bgFitSelect.addEventListener('change', () => {
+  state.background.fit = bgFitSelect.value;
+  applyBackgroundToPrintLayer();
+  if (bgPreviewDialog.open) renderBackgroundPreview();
+});
+function describeFit(width, height, fit) {
+  const ratio = width / height;
+  if (Math.abs(ratio - A4_RATIO) < 0.01) return 'Ảnh đúng tỉ lệ A4: phủ kín, không bị cắt.';
+  const wider = ratio > A4_RATIO;
+  // Cung mot ty le cho ca hai che do: anh ngang hon A4 -> cover cat chieu ngang
+  // anh, contain de trong chieu doc trang, deu theo phan so A4/ratio (va nguoc lai).
+  const lost = Math.round((1 - (wider ? A4_RATIO / ratio : ratio / A4_RATIO)) * 100);
+  if (fit === 'cover') {
+    return `Phủ kín trang: cắt khoảng ${lost}% ${wider ? 'chiều ngang ảnh (chia đều trái/phải)' : 'chiều dọc ảnh (chia đều trên/dưới)'}, tâm ảnh trùng tâm trang.`;
+  }
+  return `Giữ nguyên cả ảnh: trống khoảng ${lost}% ${wider ? 'chiều dọc trang (chia đều trên/dưới)' : 'chiều ngang trang (chia đều trái/phải)'}, ảnh đặt giữa trang.`;
+}
+function renderBackgroundPreview() {
+  const { file, opacity, fit } = state.background;
+  const imageEl = document.getElementById('bgPreviewImage');
+  const url = `/backgrounds/${encodeURIComponent(file)}`;
+  imageEl.style.backgroundImage = `url("${url}")`;
+  imageEl.style.backgroundSize = fit === 'contain' ? 'contain' : 'cover';
+  imageEl.style.opacity = String(opacity);
+  const info = document.getElementById('bgPreviewInfo');
+  const probe = new Image();
+  probe.onload = () => {
+    info.textContent = `${bgSelect.selectedOptions[0]?.textContent || file} · ${probe.naturalWidth}×${probe.naturalHeight} px · độ mờ ${Math.round(opacity * 100)}%. ${describeFit(probe.naturalWidth, probe.naturalHeight, fit)} Khi in, bật "Hình nền / Background graphics" trong hộp thoại in.`;
+  };
+  probe.onerror = () => { info.textContent = 'Không đọc được ảnh nền này.'; };
+  probe.src = url;
+}
+bgPreviewBtn.addEventListener('click', () => {
+  if (!state.background.file) return;
+  renderBackgroundPreview();
+  bgPreviewDialog.showModal();
+});
+document.getElementById('bgPreviewCloseBtn').addEventListener('click', () => bgPreviewDialog.close());
 bgOpacityRange.addEventListener('input', () => {
   const pct = parseInt(bgOpacityRange.value, 10);
   state.background.opacity = pct / 100;
   bgOpacityValue.textContent = `${pct}%`;
   applyBackgroundToPrintLayer();
+  if (bgPreviewDialog.open) renderBackgroundPreview();
 });
 
-// ---------- Prompt reference section (Task 2) ----------
-document.getElementById('promptText').textContent = EXAM_PROMPT_TEMPLATE;
-document.getElementById('promptExampleText').textContent = EXAM_PROMPT_EXAMPLE;
+// ---------- Prompt reference section (Task 2 + bien the theo tung AI) ----------
+// AI_PROMPT_VARIANTS (frontend/promptVariants.js, tu dong sinh tu AI_Prompts_Variants.txt):
+// moi AI (Gemini/Gemini Pro/ChatGPT/DeepSeek/Claude/Grok) mot prompt rieng, dung chung quy tac dinh dang
+// (nguon that su van la Gemini_Prompt_Unified.txt) nhung khac nhau o luu y rieng + vi du mon hoc.
+const promptPlatformTabsEl = document.getElementById('promptPlatformTabs');
+const promptPlatformHintEl = document.getElementById('promptPlatformHint');
+const promptTextEl = document.getElementById('promptText');
+const promptExampleTextEl = document.getElementById('promptExampleText');
+const promptExampleHintEl = document.getElementById('promptExampleHint');
+
+let activePromptVariant = AI_PROMPT_VARIANTS[0];
+
+function renderActivePromptVariant() {
+  promptPlatformHintEl.textContent = activePromptVariant.hint;
+  promptTextEl.textContent = activePromptVariant.template;
+  promptExampleTextEl.textContent = activePromptVariant.example;
+  promptExampleHintEl.textContent =
+    `Ví dụ chủ đề "${activePromptVariant.exampleTopic}" — có thể copy và dán thẳng vào tab "Dán văn bản" rồi bấm "Sinh Đề Kiểm Tra" để xem thử.`;
+}
+
+AI_PROMPT_VARIANTS.forEach((variant, i) => {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'platform-tab-btn' + (i === 0 ? ' active' : '');
+  btn.textContent = variant.label;
+  btn.addEventListener('click', () => {
+    activePromptVariant = variant;
+    promptPlatformTabsEl.querySelectorAll('.platform-tab-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    renderActivePromptVariant();
+  });
+  promptPlatformTabsEl.appendChild(btn);
+});
+renderActivePromptVariant();
 
 let copyToastTimer = null;
-function showCopyToast(msg) {
+function showCopyToast(msg, durationMs = 2000) {
   const toast = document.getElementById('copyToast');
   toast.textContent = msg;
   toast.classList.add('show');
   clearTimeout(copyToastTimer);
-  copyToastTimer = setTimeout(() => toast.classList.remove('show'), 2000);
+  copyToastTimer = setTimeout(() => toast.classList.remove('show'), durationMs);
 }
 
 async function copyTextToClipboard(text) {
@@ -181,12 +353,12 @@ async function copyTextToClipboard(text) {
 }
 
 document.getElementById('copyPromptBtn').addEventListener('click', async () => {
-  const ok = await copyTextToClipboard(EXAM_PROMPT_TEMPLATE);
-  showCopyToast(ok ? '✅ Đã sao chép prompt vào clipboard!' : '❌ Không thể sao chép, hãy copy thủ công.');
+  const ok = await copyTextToClipboard(activePromptVariant.template);
+  showCopyToast(ok ? `✅ Đã sao chép prompt (${activePromptVariant.label}) vào clipboard!` : '❌ Không thể sao chép, hãy copy thủ công.');
 });
 document.getElementById('copyExampleBtn').addEventListener('click', async () => {
-  const ok = await copyTextToClipboard(EXAM_PROMPT_EXAMPLE);
-  showCopyToast(ok ? '✅ Đã sao chép ví dụ vào clipboard!' : '❌ Không thể sao chép, hãy copy thủ công.');
+  const ok = await copyTextToClipboard(activePromptVariant.example);
+  showCopyToast(ok ? `✅ Đã sao chép ví dụ (${activePromptVariant.label}) vào clipboard!` : '❌ Không thể sao chép, hãy copy thủ công.');
 });
 
 // ---------- Form tab ----------
@@ -359,6 +531,57 @@ function clearFormFields() {
   formDraftLines.value = '5';
 }
 
+// ---------- Tai file PDF / file sai dinh dang ----------
+// PDF co lop chu: trich chu o server roi parse nhu .txt. PDF scan hoac file
+// sai cau truc: khong co OCR (cau 34) -> goi y gui file cho AI ngoai kem prompt
+// chuyen doi, AI tra ve van ban dung dinh dang de dan vao tab "Dan van ban".
+let convertPromptText = '';
+function hideConvertPrompt() { document.getElementById('convertPromptBox').classList.add('form-hidden'); }
+function showConvertPrompt(hint, sourceText) {
+  const source = sourceText ? 'nội dung bên dưới' : 'tệp PDF/ảnh tôi đính kèm';
+  convertPromptText = [
+    activePromptVariant.template,
+    '━━━━━━━━ YÊU CẦU CHUYỂN ĐỔI ━━━━━━━━',
+    `KHÔNG tự sáng tác câu hỏi mới. Hãy chép lại ĐÚNG các câu hỏi có trong ${source} (giữ nguyên đề bài, lựa chọn, đáp án nếu có) và trình bày lại theo đúng định dạng ở trên. Câu nào không có đáp án/lời giải thì tự giải và ghi rõ. Công thức toán viết bằng $...$.`,
+    ...(sourceText ? [`NỘI DUNG GỐC:\n${sourceText.slice(0, 200000)}`] : [])
+  ].join('\n\n');
+  document.getElementById('convertPromptHint').textContent = hint;
+  document.getElementById('convertPromptBox').classList.remove('form-hidden');
+}
+document.getElementById('copyConvertPromptBtn').addEventListener('click', async () => {
+  const ok = await copyTextToClipboard(convertPromptText);
+  showCopyToast(ok ? '✅ Đã sao chép prompt chuyển đổi. Dán vào ChatGPT/Gemini/Claude (đính kèm file nếu là PDF scan), rồi dán kết quả vào tab "Dán văn bản".' : '❌ Không thể sao chép, hãy copy thủ công.');
+});
+async function parseUploadWithConvertHint(file) {
+  try {
+    return await new FileUploadParser().parseFile(file);
+  } catch (err) {
+    if (/\.(docx|txt)$/i.test(file.name)) {
+      const text = /\.txt$/i.test(file.name) ? await file.text() : null;
+      showConvertPrompt('Tệp chưa theo đúng cấu trúc của ExamBuilder. Bấm nút dưới để copy prompt, gửi cho AI ngoài cùng tệp này để chuyển định dạng.', text);
+    }
+    throw err;
+  }
+}
+async function parsePdfUpload(file) {
+  const form = new FormData();
+  form.append('file', file);
+  const response = await fetch('/api/resources/extract-pdf-text', { method: 'POST', body: form });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || !data.success) throw new Error(data.error || `Không đọc được PDF (HTTP ${response.status})`);
+  if (data.scanned) {
+    showConvertPrompt(`"${file.name}" là PDF scan (${data.pages || '?'} trang ảnh, không có lớp chữ) nên phần mềm không đọc được chữ — phiên bản này không có OCR. Cách làm: copy prompt dưới, gửi cho ChatGPT/Gemini/Claude KÈM tệp PDF (nên chia nhỏ vài trang mỗi lần), rồi dán kết quả vào tab "Dán văn bản".`, null);
+    showError('PDF scan: không có chữ để đọc. Xem hướng dẫn bên dưới nút chọn tệp.');
+    return null;
+  }
+  try {
+    return new TextPromptParser().parse(data.text);
+  } catch (err) {
+    showConvertPrompt('Đã đọc được chữ trong PDF nhưng chưa theo đúng cấu trúc ExamBuilder. Bấm nút dưới để copy prompt (đã kèm nội dung PDF), gửi cho AI ngoài để chuyển định dạng.', data.text);
+    throw err;
+  }
+}
+
 // ---------- Generate exam ----------
 document.getElementById('generateBtn').addEventListener('click', async () => {
   hideError();
@@ -372,7 +595,9 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
       const fileInput = document.getElementById('fileInput');
       const file = fileInput.files[0];
       if (!file) { showError('Vui lòng chọn 1 tệp để tải lên.'); return; }
-      blocks = await new FileUploadParser().parseFile(file);
+      hideConvertPrompt();
+      blocks = /\.pdf$/i.test(file.name) ? await parsePdfUpload(file) : await parseUploadWithConvertHint(file);
+      if (!blocks) return;
     } else {
       if (!formQuestions.length) {
         showError('Chưa có câu hỏi nào trong danh sách. Hãy thêm câu hỏi trước.');
@@ -394,15 +619,17 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
 // Dung chung cho ca 4 tab (text/upload/form/auto): gan blocks da parse/sinh
 // ra vao state va ve lai Preview - tach rieng de tab "auto" (sinh qua LLM,
 // bat dong bo) khong phai lap lai logic nay.
-function applyGeneratedBlocks(blocks) {
+function applyGeneratedBlocks(blocks, { shuffle = true } = {}) {
   ensureIds(blocks);
-  shuffleAllMCQOptions(blocks);
+  if (shuffle) shuffleAllMCQOptions(blocks);
   state.blocks = blocks;
   state.title = document.getElementById('examTitleInput').value.trim() || 'Đề kiểm tra';
   state.subject = document.getElementById('examSubjectInput').value.trim();
   state.duration_minutes = parseInt(document.getElementById('examDurationInput').value, 10) || null;
   state.school_header = document.getElementById('examSchoolInput').value.trim();
   state.examId = null;
+  state.template_binding = null;
+  state.examBackground = null;
 
   clearExamVersions();
   renderExam();
@@ -417,6 +644,22 @@ function applyGeneratedBlocks(blocks) {
   lastGenerateSaveAt = Date.now();
   scheduleArchiveSave({ immediate: true });
 }
+
+// Template workspace hands off a completed snapshot to the existing editor.
+window.addEventListener('exambuilder:open-template', event => {
+  const detail = event.detail || {};
+  if (!Array.isArray(detail.blocks)) return;
+  document.getElementById('examTitleInput').value = detail.title || '';
+  document.getElementById('examSubjectInput').value = detail.subject || '';
+  document.getElementById('examDurationInput').value = detail.duration_minutes || '';
+  document.getElementById('examSchoolInput').value = detail.school_header || '';
+  state.archiveId = null;
+  // De tu mau da duoc giao vien duyet: giu nguyen thu tu lua chon; muon xao
+  // thi bam nut "Xao tron dap an".
+  applyGeneratedBlocks(structuredClone(detail.blocks), { shuffle: false });
+  state.template_binding = detail.template_binding || null;
+  scheduleArchiveSave({ immediate: true });
+});
 
 function ensureIds(blocks) {
   blocks.forEach(b => {
@@ -438,6 +681,23 @@ function normalizeExamMath(blocks) {
     (q.options || []).forEach(o => { if (o.option_text) o.option_text = formatMathSymbols(o.option_text); });
   }));
   return blocks;
+}
+
+// De luu tu ban cu co the da mat phan trong ngoac cua cong thuc (vd "\sqrt"
+// mat "{2xy}", doan giua "<" va ">" bi xoa) ngay luc luu - du lieu goc khong
+// con nen khong tu sua duoc; chi bao giao vien cau nao can sua tay.
+const BROKEN_LATEX = /\\(?:sqrt(?![\s]*[{[])|d?frac(?![\s]*\{))/;
+function warnBrokenMath(blocks) {
+  const broken = [];
+  let n = 0;
+  for (const b of blocks || []) for (const q of b.questions || []) {
+    n++;
+    const texts = [q.content, q.explanation, q.correct_answer, ...(q.options || []).map(o => o.option_text)];
+    if (texts.some(t => typeof t === 'string' && BROKEN_LATEX.test(t))) broken.push(n);
+  }
+  if (broken.length) {
+    showError(`⚠️ Đề này có công thức bị hỏng từ lúc lưu (mất phần trong ngoặc, ví dụ "\\sqrt" thiếu "{...}") ở câu ${broken.join(', ')}. Dữ liệu gốc không còn nên cần sửa tay — hoặc mở bản khác của đề trong 📚 Lịch sử nếu có.`);
+  }
 }
 
 // ---------- Render ----------
@@ -479,7 +739,7 @@ function renderExamInto(container, meta, ctx) {
     blockEl.className = 'question-block';
     const titleEl = document.createElement('div');
     titleEl.className = 'question-block-title';
-    titleEl.textContent = block.block_title || (block.block_type === 'ESSAY' ? 'Phần Tự luận' : 'Phần Trắc nghiệm');
+    titleEl.textContent = (block.block_title || (block.block_type === 'ESSAY' ? 'Phần Tự luận' : 'Phần Trắc nghiệm')) + blockPointsLabel(block);
     blockEl.appendChild(titleEl);
 
     block.questions.forEach((q, qi) => {
@@ -489,6 +749,22 @@ function renderExamInto(container, meta, ctx) {
 
     container.appendChild(blockEl);
   });
+}
+
+// Diem cau den tu template (chuoi thap phan "0.50"); de cu khong co diem thi
+// khong hien gi. Cong bang don vi 0,01 de tong phan chinh xac.
+function pointsCents(q) {
+  const value = q && q.points;
+  return typeof value === 'string' && /^\d+(\.\d{1,2})?$/.test(value.trim()) ? Math.round(Number(value) * 100) : null;
+}
+function questionPointsLabel(q) {
+  const cents = pointsCents(q);
+  return cents == null ? '' : ` (${(cents / 100).toFixed(2)} điểm)`;
+}
+function blockPointsLabel(block) {
+  const all = (block.questions || []).map(pointsCents);
+  if (!all.length || all.some(c => c == null)) return '';
+  return ` (${(all.reduce((a, b) => a + b, 0) / 100).toFixed(2)} điểm)`;
 }
 
 function renderExam() {
@@ -518,7 +794,7 @@ function renderQuestionCard(q, bi, qi, ctx, displayNo) {
   contentWrap.className = 'question-content';
   const numberSpan = document.createElement('span');
   numberSpan.className = 'question-number';
-  numberSpan.textContent = `Câu ${displayNo != null ? displayNo : qi + 1}: `;
+  numberSpan.textContent = `Câu ${displayNo != null ? displayNo : qi + 1}${questionPointsLabel(q)}: `;
   numberSpan.title = 'Bấm để phóng to / thu gọn câu này';
   numberSpan.addEventListener('click', () => {
     const opened = card.classList.toggle('expanded');
@@ -869,14 +1145,42 @@ document.getElementById('generateMultiCodeBtn').addEventListener('click', () => 
 });
 
 function toggleActionButtons(enabled) {
+  document.getElementById('shuffleOptionsBtn').disabled = !enabled;
   document.getElementById('shareBtn').disabled = !enabled;
   document.getElementById('exportPdfBtn').disabled = !enabled;
   document.getElementById('exportWordBtn').disabled = !enabled;
+  document.getElementById('saveExamBtn').disabled = !enabled;
+  updateExamBackgroundStatus();
 }
 
+// Xao noi dung lua chon TN cua de goc: shuffleMCQOptions gan lai nhan A-D theo
+// vi tri moi va tinh lai correct_answer tu is_correct. Cac ma de da tron giu
+// nguyen (moi ma de da xao rieng luc tao).
+document.getElementById('shuffleOptionsBtn').addEventListener('click', () => {
+  const mcqs = state.blocks.flatMap(b => b.questions).filter(q => q.question_type === 'MCQ');
+  if (!mcqs.length) { showCopyToast('Đề không có câu trắc nghiệm để xáo.'); return; }
+  const broken = mcqs.filter(q => !(q.options || []).some(o => o.is_correct && o.option_key === q.correct_answer));
+  if (broken.length) { showError(`Có ${broken.length} câu trắc nghiệm chưa đánh dấu đáp án đúng khớp lựa chọn; sửa trước khi xáo để không sai đáp án.`); return; }
+  shuffleAllMCQOptions(state.blocks);
+  renderExam();
+  scheduleArchiveSave();
+  showCopyToast(`🔀 Đã xáo đáp án ${mcqs.length} câu trắc nghiệm${state.examVersions.length ? '. Các mã đề đã tạo giữ nguyên.' : '.'}`);
+});
+
 // ---------- Helpers ----------
-function showError(msg) { errorMessageEl.textContent = msg; }
-function hideError() { errorMessageEl.textContent = ''; }
+// Thong bao loi dung chung cho moi tab: tu xoa sau 2 phut (va khi doi tab, xem
+// phan Tabs) de loi cua thao tac cu khong treo lai lam nguoi dung hieu nham.
+const ERROR_AUTO_CLEAR_MS = 2 * 60 * 1000;
+let errorClearTimer = null;
+function showError(msg) {
+  errorMessageEl.textContent = msg;
+  clearTimeout(errorClearTimer);
+  errorClearTimer = setTimeout(hideError, ERROR_AUTO_CLEAR_MS);
+}
+function hideError() {
+  clearTimeout(errorClearTimer);
+  errorMessageEl.textContent = '';
+}
 function escapeHtml(str) {
   const div = document.createElement('div');
   div.textContent = str;
@@ -889,7 +1193,9 @@ function buildExamPayload() {
     subject: state.subject,
     duration_minutes: state.duration_minutes,
     school_header: state.school_header,
-    blocks: state.blocks
+    blocks: state.blocks,
+    template_binding: state.template_binding,
+    background: state.examBackground
   };
 }
 
@@ -932,7 +1238,7 @@ function buildWordChildren(meta, blocks) {
 
   let questionNo = 0; // danh so lien tuc 1..N cho ca de
   blocks.forEach(block => {
-    children.push(new Paragraph({ text: block.block_title || '', heading: HeadingLevel.HEADING_2 }));
+    children.push(new Paragraph({ text: (block.block_title || '') + blockPointsLabel(block), heading: HeadingLevel.HEADING_2 }));
 
     block.questions.forEach((q) => {
       questionNo += 1;
@@ -940,7 +1246,7 @@ function buildWordChildren(meta, blocks) {
       // tren man hinh - phai lam phang LaTeX ($...$) sang Unicode truoc khi
       // dua vao TextRun, tranh hien thi tho nguyen "$\sqrt{16}$" trong file.
       children.push(new Paragraph({
-        children: [new TextRun({ text: `Câu ${questionNo}: `, bold: true }), new TextRun(latexToPlainText(q.content))]
+        children: [new TextRun({ text: `Câu ${questionNo}${questionPointsLabel(q)}: `, bold: true }), new TextRun(latexToPlainText(q.content))]
       }));
 
       if (q.question_type === 'MCQ') {
@@ -1014,15 +1320,33 @@ document.getElementById('exportWordBtn').addEventListener('click', () => {
 });
 
 // ---------- Share link ----------
+// "localhost" chi tro ve chinh may dang mo: khi giao vien dang mo app bang
+// localhost, thay bang IP LAN cua may chay server de may khac cung mang mo duoc.
+async function shareOrigin() {
+  const isLocal = ['localhost', '127.0.0.1', '[::1]', '::1'].includes(location.hostname);
+  if (!isLocal) return { origin: location.origin, hint: '' };
+  try {
+    const data = await (await fetch('/api/network-info')).json();
+    const ip = data.success && data.addresses[0];
+    if (ip) {
+      return { origin: `${location.protocol}//${ip}:${data.port || location.port}`,
+        hint: `Máy khác cùng mạng Wi-Fi/LAN với máy này mở được link khi ExamBuilder trên máy này đang chạy. Lần đầu Windows có thể hỏi tường lửa cho Node.js — chọn "Cho phép" (mạng Riêng tư). Máy ở mạng khác (4G, nhà khác) chưa mở được.` };
+    }
+  } catch { /* khong lay duoc IP LAN - dung localhost va bao ro ben duoi */ }
+  return { origin: location.origin, hint: 'Không tìm thấy mạng LAN/Wi-Fi: link "localhost" chỉ mở được trên chính máy này.' };
+}
+
 async function generateShareLink() {
   const payload = buildExamPayload();
   const json = JSON.stringify(payload);
-  const base64 = btoa(unescape(encodeURIComponent(json)));
+  // Link ?data= nam trong tay hoc sinh: chi ma hoa ban da bo dap an/loi giai.
+  const base64 = btoa(unescape(encodeURIComponent(JSON.stringify(redactExamForStudent(payload)))));
 
+  const { origin, hint: networkHint } = await shareOrigin();
   let url;
   let shareCode = null;
   if (base64.length < 1800) {
-    url = `${location.origin}${location.pathname}?data=${encodeURIComponent(base64)}`;
+    url = `${origin}${location.pathname}?data=${encodeURIComponent(base64)}`;
   } else {
     try {
       const saveRes = await fetch('/api/exams/save', {
@@ -1042,7 +1366,7 @@ async function generateShareLink() {
       const shareData = await shareRes.json();
       if (!shareData.success) throw new Error(shareData.error);
       shareCode = shareData.share_code;
-      url = `${location.origin}${location.pathname}?code=${shareCode}`;
+      url = `${origin}${location.pathname}?code=${shareCode}`;
     } catch (err) {
       showError('Không thể tạo link chia sẻ qua máy chủ: ' + err.message);
       return;
@@ -1051,6 +1375,7 @@ async function generateShareLink() {
 
   state.activeShareCode = shareCode;
   document.getElementById('shareLinkOutput').value = url;
+  document.getElementById('shareNetworkHint').textContent = networkHint;
 
   const revokeBtn = document.getElementById('revokeShareLinkBtn');
   const revokeHint = document.getElementById('shareRevokeHint');
@@ -1095,7 +1420,9 @@ document.getElementById('closeShareModalBtn').addEventListener('click', () => {
 
 // ---------- Sinh de tu dong bang LLM (module cong them) ----------
 let cachedModels = [];
+let cachedLiveCloudModels = []; // [{provider, model_name, display_name}] - lay live tu API, khong luu DB
 let cachedResources = [];
+const CLOUD_PROVIDER_LABELS = { openai: 'OpenAI', anthropic: 'Anthropic', gemini: 'Gemini', deepseek: 'DeepSeek' };
 
 function modelLabel(m) {
   const kind = m.source_type === 'local_gguf' ? 'Local' : (m.provider || '').toUpperCase();
@@ -1117,10 +1444,43 @@ async function loadModels() {
 function renderModelSelect() {
   const select = document.getElementById('autoModelSelect');
   const prev = select.value;
-  select.innerHTML = cachedModels.length
-    ? cachedModels.map(m => `<option value="${m.model_id}">${escapeHtml(modelLabel(m))}</option>`).join('')
-    : '<option value="">— Chưa có model, vào Cài đặt để thêm —</option>';
-  if (cachedModels.some(m => m.model_id === prev)) select.value = prev;
+  const groups = [];
+
+  const localModels = cachedModels.filter(m => m.source_type === 'local_gguf');
+  if (localModels.length) {
+    groups.push(`<optgroup label="Model cục bộ">${
+      localModels.map(m => `<option value="local:${m.model_id}">${escapeHtml(m.display_name)}</option>`).join('')
+    }</optgroup>`);
+  }
+
+  // Model cloud lo dang ky thu cong tu truoc (co san trong LLM_MODEL) - van
+  // cho chon de tuong thich nguoc, gom rieng khoi tranh lan voi model live.
+  const legacyCloudModels = cachedModels.filter(m => m.source_type === 'cloud');
+  if (legacyCloudModels.length) {
+    groups.push(`<optgroup label="Đã đăng ký (cũ)">${
+      legacyCloudModels.map(m => `<option value="legacy:${m.model_id}">${escapeHtml(modelLabel(m))}</option>`).join('')
+    }</optgroup>`);
+  }
+
+  for (const providerKey of Object.keys(CLOUD_PROVIDER_LABELS)) {
+    const items = cachedLiveCloudModels.filter(m => m.provider === providerKey);
+    if (items.length) {
+      groups.push(`<optgroup label="${CLOUD_PROVIDER_LABELS[providerKey]}">${
+        items.map(m => `<option value="cloud:${providerKey}:${m.model_name}">${escapeHtml(m.display_name)}</option>`).join('')
+      }</optgroup>`);
+    }
+  }
+
+  select.innerHTML = groups.length
+    ? groups.join('')
+    : '<option value="">— Chưa có model, hãy lưu API key hoặc tải model local trong Cài đặt —</option>';
+
+  const allValues = new Set([
+    ...localModels.map(m => `local:${m.model_id}`),
+    ...legacyCloudModels.map(m => `legacy:${m.model_id}`),
+    ...cachedLiveCloudModels.map(m => `cloud:${m.provider}:${m.model_name}`)
+  ]);
+  if (allValues.has(prev)) select.value = prev;
 }
 
 function showSettingsStatus(msg) {
@@ -1203,6 +1563,35 @@ async function loadProviderKeyStatus() {
   }
 }
 
+async function loadLiveCloudModels() {
+  cachedLiveCloudModels = [];
+  try {
+    const res = await fetch('/api/settings/llm');
+    const data = await res.json();
+    const providers = data.success ? data.providers.map(p => p.provider) : [];
+    for (const provider of providers) {
+      try {
+        const mRes = await fetch('/api/settings/llm/models', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ provider })
+        });
+        const mData = await mRes.json();
+        if (mData.success) {
+          for (const m of mData.models) {
+            cachedLiveCloudModels.push({ provider, model_name: m.id, display_name: m.display_name || m.id });
+          }
+        }
+      } catch {
+        // Provider nay loi (key sai, mat mang...) - bo qua, khong chan cac provider khac.
+      }
+    }
+  } catch {
+    // Khong lay duoc danh sach provider da luu key - giu cachedLiveCloudModels rong.
+  }
+  renderModelSelect();
+}
+
 document.querySelectorAll('.save-key-btn').forEach(btn => {
   btn.addEventListener('click', async () => {
     const row = btn.closest('.settings-provider-row');
@@ -1219,31 +1608,11 @@ document.querySelectorAll('.save-key-btn').forEach(btn => {
       if (!data.success) throw new Error(data.error);
       input.value = '';
       loadProviderKeyStatus();
+      loadLiveCloudModels();
     } catch (err) {
       showSettingsStatus('Lỗi lưu API key: ' + err.message);
     }
   });
-});
-
-document.getElementById('addCloudModelBtn').addEventListener('click', async () => {
-  const provider = document.getElementById('newCloudModelProvider').value;
-  const modelName = document.getElementById('newCloudModelName').value.trim();
-  const displayName = document.getElementById('newCloudModelDisplay').value.trim() || modelName;
-  if (!modelName) { showSettingsStatus('Vui lòng nhập tên model API.'); return; }
-  try {
-    const res = await fetch('/api/models/cloud', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ display_name: displayName, provider, model_name: modelName })
-    });
-    const data = await res.json();
-    if (!data.success) throw new Error(data.error);
-    document.getElementById('newCloudModelName').value = '';
-    document.getElementById('newCloudModelDisplay').value = '';
-    loadModels();
-  } catch (err) {
-    showSettingsStatus('Lỗi thêm model: ' + err.message);
-  }
 });
 
 document.getElementById('uploadLocalModelBtn').addEventListener('click', async () => {
@@ -1278,6 +1647,7 @@ document.getElementById('settingsBtn').addEventListener('click', () => {
 });
 document.getElementById('closeSettingsModalBtn').addEventListener('click', () => {
   document.getElementById('settingsModal').classList.remove('open');
+  loadLiveCloudModels(); // phan anh key vua luu/xoa vao dropdown Model ma khong can tai lai trang
 });
 
 // ---------- Cai dat > Giao dien (chu de mau + co chu) ----------
@@ -1370,7 +1740,32 @@ async function loadResources() {
   }
   renderDocSelect();
   renderDocListForSections();
+  loadResourceHistory();
 }
+
+// Lich su thu vien tai lieu (moi nhat truoc), lay tu RESOURCE_HISTORY o server.
+const RESOURCE_ACTION_LABELS = {
+  create_doc: 'Tạo tài liệu', add_section: 'Thêm phần', upload_section: 'Tải file lên', delete_doc: 'Xóa tài liệu'
+};
+async function loadResourceHistory() {
+  const list = document.getElementById('resourceHistory');
+  try {
+    const data = await (await fetch('/api/resources/history?limit=30')).json();
+    const rows = data.success ? data.history : [];
+    list.replaceChildren();
+    if (!rows.length) { list.append(Object.assign(document.createElement('li'), { className: 'hint', textContent: 'Chưa có thay đổi nào.' })); return; }
+    for (const h of rows) {
+      const li = document.createElement('li');
+      const when = new Date(h.created_at).toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit', year: 'numeric' });
+      const target = h.section_title ? `"${h.section_title}" → "${h.doc_title || ''}"` : `"${h.doc_title || ''}"`;
+      li.textContent = `${when} · ${RESOURCE_ACTION_LABELS[h.action] || h.action} ${target}${h.action === 'upload_section' && h.detail ? ` (${h.detail})` : ''}`;
+      list.append(li);
+    }
+  } catch {
+    list.replaceChildren(Object.assign(document.createElement('li'), { className: 'hint', textContent: 'Không tải được lịch sử.' }));
+  }
+}
+const RESOURCE_TOAST_MS = 5000;
 
 function renderSectionCheckboxes() {
   const wrap = document.getElementById('autoSectionCheckboxes');
@@ -1412,6 +1807,7 @@ document.getElementById('addDocBtn').addEventListener('click', async () => {
     if (!data.success) throw new Error(data.error);
     document.getElementById('newDocTitle').value = '';
     document.getElementById('newDocSubject').value = '';
+    showCopyToast(`✅ Đã thêm tài liệu "${title}" thành công.`, RESOURCE_TOAST_MS);
     loadResources();
   } catch (err) {
     showError('Lỗi tạo tài liệu: ' + err.message);
@@ -1421,6 +1817,9 @@ document.getElementById('addDocBtn').addEventListener('click', async () => {
 function renderDocListForSections() {
   const wrap = document.getElementById('docListForSections');
   wrap.innerHTML = '';
+  if (!cachedResources.length) {
+    wrap.append(Object.assign(document.createElement('p'), { className: 'hint', textContent: 'Chưa có tài liệu nào. Nhập tên ở trên rồi bấm "+ Tạo tài liệu".' }));
+  }
   cachedResources.forEach(doc => {
     const box = document.createElement('div');
     box.className = 'doc-sections-box';
@@ -1428,6 +1827,12 @@ function renderDocListForSections() {
     const title = document.createElement('strong');
     title.textContent = `${doc.title}${doc.subject ? ' · ' + doc.subject : ''} (${doc.sections.length} phần)`;
     box.appendChild(title);
+    if (doc.sections.length) {
+      const sectionList = document.createElement('ul');
+      sectionList.className = 'doc-section-names';
+      doc.sections.forEach(sec => sectionList.append(Object.assign(document.createElement('li'), { textContent: sec.section_title })));
+      box.appendChild(sectionList);
+    }
 
     const sectionTitleInput = document.createElement('input');
     sectionTitleInput.type = 'text';
@@ -1452,9 +1857,37 @@ function renderDocListForSections() {
         });
         const data = await res.json();
         if (!data.success) throw new Error(data.error);
+        showCopyToast(`✅ Đã thêm phần "${section_title}" vào tài liệu "${doc.title}" thành công.`, RESOURCE_TOAST_MS);
         loadResources();
       } catch (err) {
         showError('Lỗi thêm phần: ' + err.message);
+      }
+    });
+
+    const sectionFileInput = document.createElement('input');
+    sectionFileInput.type = 'file';
+    sectionFileInput.accept = '.txt,.docx,.pdf';
+
+    const uploadSectionBtn = document.createElement('button');
+    uploadSectionBtn.type = 'button';
+    uploadSectionBtn.className = 'secondary-btn';
+    uploadSectionBtn.textContent = '📤 Tải file lên';
+    uploadSectionBtn.addEventListener('click', async () => {
+      const file = sectionFileInput.files[0];
+      if (!file) { showError('Vui lòng chọn file (.txt, .docx, .pdf) trước.'); return; }
+      const formData = new FormData();
+      formData.append('file', file);
+      const section_title = sectionTitleInput.value.trim();
+      if (section_title) formData.append('section_title', section_title);
+      try {
+        const res = await fetch(`/api/resources/${doc.doc_id}/sections/upload`, { method: 'POST', body: formData });
+        const data = await res.json();
+        if (!data.success) throw new Error(data.error);
+        sectionFileInput.value = '';
+        showCopyToast(`✅ Đã tải "${file.name}" vào tài liệu "${doc.title}" thành công.`, RESOURCE_TOAST_MS);
+        loadResources();
+      } catch (err) {
+        showError('Lỗi tải file: ' + err.message);
       }
     });
 
@@ -1463,10 +1896,12 @@ function renderDocListForSections() {
     delDocBtn.className = 'delete-btn';
     delDocBtn.textContent = 'Xóa tài liệu';
     delDocBtn.addEventListener('click', async () => {
+      if (!confirm(`Xóa tài liệu "${doc.title}" và ${doc.sections.length} phần bên trong?`)) return;
       try {
         const res = await fetch(`/api/resources/${doc.doc_id}`, { method: 'DELETE' });
         const data = await res.json();
         if (!data.success) throw new Error(data.error);
+        showCopyToast(`🗑️ Đã xóa tài liệu "${doc.title}".`, RESOURCE_TOAST_MS);
         loadResources();
       } catch (err) {
         showError('Lỗi xóa tài liệu: ' + err.message);
@@ -1476,6 +1911,8 @@ function renderDocListForSections() {
     box.appendChild(sectionTitleInput);
     box.appendChild(sectionContentInput);
     box.appendChild(addSectionBtn);
+    box.appendChild(sectionFileInput);
+    box.appendChild(uploadSectionBtn);
     box.appendChild(delDocBtn);
     wrap.appendChild(box);
   });
@@ -1493,44 +1930,340 @@ function collectQuestionSpec() {
   return spec;
 }
 
-document.getElementById('autoGenerateBtn').addEventListener('click', async () => {
-  hideError();
-  const statusEl = document.getElementById('autoGenerateStatus');
-  const btn = document.getElementById('autoGenerateBtn');
+// Tieu de bang thu gon cho biet bang dang trong hay dang quyet cau truc de.
+function updateSpecSummary() {
+  const total = collectQuestionSpec().reduce((n, s) => n + s.so_luong, 0);
+  document.getElementById('autoSpecSummary').textContent = total
+    ? `Bảng số câu theo loại × mức độ — đang đặt ${total} câu (ưu tiên hơn yêu cầu viết tay)`
+    : 'Bảng số câu theo loại × mức độ (tùy chọn — đang để trống)';
+}
+document.querySelectorAll('#autoSpecTable input[type="number"]').forEach(input => input.addEventListener('input', updateSpecSummary));
 
-  const modelId = document.getElementById('autoModelSelect').value;
-  if (!modelId) { showError('Vui lòng chọn 1 model trong Cài đặt trước.'); return; }
+// Mui ten trai/phai chuyen o (theo hang, het hang thi sang hang ke); len/xuong
+// giu mac dinh tang/giam so. O number khong co vi tri con tro nen luon chuyen o.
+// Vao o thi boi den so de go de luon.
+const specInputs = [...document.querySelectorAll('#autoSpecTable input[type="number"]')];
+specInputs.forEach((input, index) => {
+  input.addEventListener('focus', () => input.select());
+  input.addEventListener('keydown', e => {
+    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+    const next = specInputs[index + (e.key === 'ArrowRight' ? 1 : -1)];
+    if (!next) return;
+    e.preventDefault();
+    next.focus();
+  });
+});
+updateSpecSummary();
 
+// Yeu cau viet tay co nhac so cau / loai cau / muc do khong (de canh bao khi bang cung co so).
+const STRUCTURE_HINT_RE = /\d+\s*(câu|cau)(?![a-zà-ỹ])|trắc nghiệm|trac nghiem|tự luận|tu luan|đúng\s*\/?\s*sai|điền|nhận biết|thông hiểu|vận dụng/i;
+
+// ---------- Bang sinh de tu dong (dialog) ----------
+// Bam tab "Sinh de tu dong" hoac nut trong tab -> mo bang lon. Sinh de chay qua
+// job (/api/generate/jobs) de hien tien do; AI duoc hoi lai qua khoi [HOI_NGUOI_DUNG].
+const autoGenDialog = document.getElementById('autoGenDialog');
+const autoGenErrorEl = document.getElementById('autoGenError');
+const autoGenResultEl = document.getElementById('autoGenResult');
+let autoGenRunning = false;
+let autoGenPending = null; // { requestBody, clarifications, questions } khi AI dang hoi
+function openAutoGenBoard() { if (!autoGenDialog.open) autoGenDialog.showModal(); }
+document.getElementById('openAutoGenBtn').addEventListener('click', openAutoGenBoard);
+document.querySelector('.tab-btn[data-tab="auto"]').addEventListener('click', openAutoGenBoard);
+document.getElementById('autoGenCloseBtn').addEventListener('click', () => autoGenDialog.close());
+function autoGenError(msg) { autoGenErrorEl.textContent = msg; }
+
+const STAGE_ORDER = ['prepare', 'calling', 'checking', 'done'];
+function renderAutoGenProgress(job) {
+  const box = document.getElementById('autoGenProgress');
+  box.hidden = false;
+  const stage = job.stage === 'retry' ? 'calling' : (job.stage === 'queued' ? 'prepare' : job.stage);
+  const attempt = Math.max(1, job.attempt || 1);
+  const max = job.max_attempts || 3;
+  // Phan tram uoc luong: moi luot goi AI chiem mot doan; trong luc cho AI, thanh
+  // nhich dan theo thoi gian (khong biet truoc AI mat bao lau).
+  const slot = 85 / max;
+  const base = 8 + (attempt - 1) * slot;
+  let pct = 3;
+  if (stage === 'prepare') pct = 5;
+  else if (stage === 'calling') pct = base + slot * 0.8 * (1 - Math.exp(-(job.elapsed_ms || 0) / 45000));
+  else if (stage === 'checking') pct = base + slot * 0.9;
+  else if (stage === 'done') pct = 100;
+  pct = Math.min(100, Math.max(3, Math.round(pct)));
+  document.getElementById('autoGenBarFill').style.width = pct + '%';
+  box.querySelector('[role=progressbar]').setAttribute('aria-valuenow', String(pct));
+  const secs = Math.round((job.elapsed_ms || 0) / 1000);
+  document.getElementById('autoGenStage').textContent = `${pct}% · ${job.message || ''} (${secs} giây)`;
+  const idx = STAGE_ORDER.indexOf(stage);
+  document.querySelectorAll('#autoGenSteps li').forEach((li, i) => {
+    li.classList.toggle('done', i < idx || stage === 'done');
+    li.classList.toggle('active', i === idx && stage !== 'done');
+    if (li.dataset.step === 'calling') li.textContent = attempt > 1 ? `AI soạn đề (lần ${attempt}/${max})` : 'AI soạn đề';
+  });
+}
+
+function buildAutoGenRequest() {
+  const selectedValue = document.getElementById('autoModelSelect').value;
+  if (!selectedValue) { autoGenError('Vui lòng chọn 1 model (lưu API key hoặc tải model local trong Cài đặt trước).'); return null; }
   const questionSpec = collectQuestionSpec();
-  if (!questionSpec.length) { showError('Vui lòng nhập số lượng câu hỏi cho ít nhất 1 loại × mức độ.'); return; }
-
   const sectionIds = Array.from(document.querySelectorAll('#autoSectionCheckboxes input:checked')).map(i => i.value);
   const topic = document.getElementById('autoTopicInput').value.trim();
-
-  btn.disabled = true;
-  statusEl.textContent = 'Đang sinh đề... có thể mất vài chục giây tới vài phút, đặc biệt với model local.';
-
-  try {
-    const res = await fetch('/api/generate', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model_id: modelId, section_ids: sectionIds, topic, question_spec: questionSpec })
-    });
-    const data = await res.json();
-    if (!data.success) {
-      throw new Error(data.details ? `${data.error}: ${data.details}` : data.error);
-    }
-    applyGeneratedBlocks(data.blocks);
-    statusEl.textContent = '✅ Đã sinh đề thành công.';
-  } catch (err) {
-    statusEl.textContent = '';
-    showError('Lỗi sinh đề tự động: ' + err.message);
-  } finally {
-    btn.disabled = false;
+  const extraInstructions = document.getElementById('autoExtraPromptInput').value.trim();
+  if (questionSpec.length && STRUCTURE_HINT_RE.test(extraInstructions)) {
+    const total = questionSpec.reduce((n, s) => n + s.so_luong, 0);
+    if (!confirm([
+      `Bảng đang đặt ${total} câu và yêu cầu viết tay cũng nhắc số câu/loại câu/mức độ.`,
+      'Khi hai bên khác nhau, AI sẽ làm THEO BẢNG; yêu cầu viết tay chỉ dùng cho chủ đề, dạng bài, phong cách.',
+      'Bấm OK để sinh theo bảng, hoặc Hủy rồi đưa bảng về 0 nếu muốn làm theo yêu cầu viết tay.'
+    ].join('\n\n'))) return null;
   }
+  // "local:<model_id>" / "legacy:<model_id>" -> gui model_id (LLM_MODEL).
+  // "cloud:<provider>:<model_name>" -> gui thang provider/model_name, khong can dang ky.
+  const requestBody = { section_ids: sectionIds, doc_id: document.getElementById('autoDocSelect').value || null, topic, question_spec: questionSpec, extra_instructions: extraInstructions,
+    allow_questions: document.getElementById('autoAllowQuestions').checked };
+  if (selectedValue.startsWith('cloud:')) {
+    const rest = selectedValue.slice('cloud:'.length);
+    const sep = rest.indexOf(':');
+    requestBody.provider = rest.slice(0, sep);
+    requestBody.model_name = rest.slice(sep + 1);
+  } else if (selectedValue.startsWith('local:') || selectedValue.startsWith('legacy:')) {
+    requestBody.model_id = selectedValue.slice(selectedValue.indexOf(':') + 1);
+  }
+  return requestBody;
+}
+
+// Ten de moi: lay o "Ten de" trong bang; trong thi "De kiem tra – <chu de>". Tranh
+// de moi mang ten de cu con nam trong o tieu de cua trinh soan de.
+function applyAutoGenTitle(topic) {
+  const typed = document.getElementById('autoTitleInput').value.trim();
+  document.getElementById('examTitleInput').value = typed || (topic ? `Đề kiểm tra – ${topic}` : 'Đề kiểm tra');
+  const doc = cachedResources.find(d => d.doc_id === document.getElementById('autoDocSelect').value);
+  if (doc?.subject) document.getElementById('examSubjectInput').value = doc.subject;
+}
+
+// Hop xac nhan trong bang (thay confirm() cua trinh duyet).
+function askAutoGen(title, text, yesLabel = 'Có') {
+  const dlg = document.getElementById('autoGenConfirm');
+  document.getElementById('autoGenConfirmTitle').textContent = title;
+  document.getElementById('autoGenConfirmText').textContent = text;
+  document.getElementById('autoGenConfirmYes').textContent = yesLabel;
+  return new Promise(resolve => {
+    const done = value => { dlg.close(); yes.removeEventListener('click', onYes); no.removeEventListener('click', onNo); dlg.removeEventListener('cancel', onNo); resolve(value); };
+    const yes = document.getElementById('autoGenConfirmYes');
+    const no = document.getElementById('autoGenConfirmNo');
+    const onYes = () => done(true);
+    const onNo = e => { e?.preventDefault?.(); done(false); };
+    yes.addEventListener('click', onYes);
+    no.addEventListener('click', onNo);
+    dlg.addEventListener('cancel', onNo);
+    dlg.showModal();
+  });
+}
+
+let autoGenJobId = null;
+let autoGenLastRequest = null;
+let autoGenPreviewBlocks = null;
+let autoGenStopped = false;
+function setAutoGenControls(mode) {
+  // mode: 'running' | 'stopped' | 'idle'
+  document.getElementById('autoGenControls').hidden = mode === 'idle';
+  document.getElementById('autoGenStopBtn').hidden = mode !== 'running';
+  document.getElementById('autoGenResumeBtn').hidden = mode !== 'stopped';
+  document.getElementById('autoGenerateBtn').disabled = mode === 'running';
+}
+function markAutoGenFailed(message) {
+  document.getElementById('autoGenStage').textContent = message;
+  document.querySelectorAll('#autoGenSteps li.active').forEach(li => { li.classList.remove('active'); li.classList.add('failed'); });
+}
+function resetAutoGenBoard() {
+  autoGenJobId = null;
+  autoGenPending = null;
+  autoGenPreviewBlocks = null;
+  autoGenStopped = false;
+  document.getElementById('autoGenProgress').hidden = true;
+  document.getElementById('autoGenQA').hidden = true;
+  document.getElementById('autoGenPreview').hidden = true;
+  document.getElementById('autoGenPreviewPaper').replaceChildren();
+  autoGenError('');
+  autoGenResultEl.textContent = '';
+  document.getElementById('autoGenerateStatus').textContent = '';
+  setAutoGenControls('idle');
+}
+function describeContext(info) {
+  if (!info || !info.sections) return 'Không dùng tài liệu tham khảo.';
+  const kb = n => `${n < 1000 ? n : (n / 1000).toFixed(1) + 'k'} ký tự`;
+  return info.mode === 'full'
+    ? `AI đã đọc toàn bộ ${info.sections} phần tài liệu (${kb(info.used_chars)}).`
+    : `Tài liệu dài ${kb(info.total_chars)}: AI đọc ${info.used_chunks}/${info.total_chunks} đoạn liên quan nhất (${kb(info.used_chars)}).`;
+}
+function previewTitle(topic) {
+  const typed = document.getElementById('autoTitleInput').value.trim();
+  return typed || (topic ? `Đề kiểm tra – ${topic}` : 'Đề kiểm tra');
+}
+// Ve de vua sinh vao bang de xem truoc; CHUA dua vao trinh soan de / Lich su
+// cho toi khi bam "Luu de". Sua tren ban xem truoc (xoa cau, danh dau dap an)
+// duoc giu khi luu.
+function showAutoGenPreview(data, requestBody) {
+  autoGenPreviewBlocks = structuredClone(data.blocks);
+  ensureIds(autoGenPreviewBlocks);
+  const count = autoGenPreviewBlocks.reduce((n, blk) => n + blk.questions.length, 0);
+  const title = previewTitle(requestBody.topic);
+  document.getElementById('autoGenPreviewTitle').textContent = `Xem trước: ${title} (${count} câu)`;
+  const warn = data.spec_warnings?.length ? ` ⚠️ AI chưa khớp bảng: ${data.spec_warnings.join('; ')}.` : '';
+  document.getElementById('autoGenPreviewInfo').textContent = `${describeContext(data.context_info)}${warn} Kiểm tra đề, ổn thì bấm "Lưu đề" để đưa vào trình soạn đề và Lịch sử.`;
+  const paper = document.getElementById('autoGenPreviewPaper');
+  const meta = { title, subject: document.getElementById('examSubjectInput').value.trim(), duration_minutes: parseInt(document.getElementById('examDurationInput').value, 10) || null, school_header: document.getElementById('examSchoolInput').value.trim() };
+  const rerender = () => { paper.replaceChildren(); renderExamInto(paper, meta, { blocks: autoGenPreviewBlocks, rerender }); };
+  rerender();
+  document.getElementById('autoGenPreview').hidden = false;
+  document.getElementById('autoGenerateStatus').textContent = `📝 Đề "${title}" (${count} câu) đang chờ lưu — mở bảng sinh đề để xem và bấm Lưu.`;
+  document.getElementById('autoGenPreview').scrollIntoView({ block: 'start', behavior: 'smooth' });
+}
+
+async function runAutoGenJob(requestBody) {
+  const statusEl = document.getElementById('autoGenerateStatus');
+  autoGenRunning = true;
+  autoGenStopped = false;
+  autoGenLastRequest = requestBody;
+  autoGenError('');
+  autoGenResultEl.textContent = '';
+  document.getElementById('autoGenQA').hidden = true;
+  document.getElementById('autoGenPreview').hidden = true;
+  setAutoGenControls('running');
+  renderAutoGenProgress({ stage: 'queued', message: 'Đang bắt đầu...', elapsed_ms: 0 });
+  statusEl.textContent = '⏳ Đang sinh đề... (bảng sinh đề có thể đóng, đề vẫn tiếp tục sinh)';
+  try {
+    const start = await fetch('/api/generate/jobs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(requestBody) });
+    const startData = await start.json();
+    if (!startData.success) throw new Error(startData.error || `HTTP ${start.status}`);
+    autoGenJobId = startData.job_id;
+    let job;
+    for (;;) {
+      await new Promise(r => setTimeout(r, 700));
+      if (autoGenJobId !== startData.job_id) return; // da huy/bat dau lai
+      const res = await fetch(`/api/generate/jobs/${startData.job_id}`);
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error);
+      job = data.job;
+      if (job.state === 'done') break;
+      renderAutoGenProgress(job);
+    }
+    autoGenJobId = null;
+    const data = job.result || {};
+    if (data.cancelled) {
+      if (data.mode === 'stop') {
+        autoGenStopped = true;
+        setAutoGenControls('stopped');
+        document.getElementById('autoGenResumeBtn').textContent = '▶ Tiếp tục';
+        markAutoGenFailed('⏸ Đã dừng. Bấm "Tiếp tục" để sinh lại từ đầu với cùng yêu cầu, hoặc "Hủy" để bỏ toàn bộ.');
+        statusEl.textContent = '⏸ Đã dừng sinh đề.';
+      } else {
+        resetAutoGenBoard();
+        showCopyToast('✖ Đã hủy sinh đề.', 4000);
+      }
+      return;
+    }
+    if (!data.success) throw new Error(data.details ? `${data.error}: ${data.details}` : data.error);
+    if (data.needs_input) {
+      renderAutoGenProgress({ ...job, stage: 'checking', message: 'AI cần thêm thông tin từ bạn.' });
+      autoGenPending = { requestBody, questions: data.questions };
+      document.getElementById('autoGenQuestions').textContent = data.questions;
+      document.getElementById('autoGenAnswer').value = '';
+      document.getElementById('autoGenQA').hidden = false;
+      setAutoGenControls('stopped');
+      document.getElementById('autoGenResumeBtn').hidden = true;
+      statusEl.textContent = '🤖 AI đang hỏi lại — mở bảng sinh đề để trả lời.';
+      openAutoGenBoard();
+      document.getElementById('autoGenAnswer').focus();
+      return;
+    }
+    renderAutoGenProgress({ ...job, stage: 'done', message: 'Đã sinh đề — xem trước bên dưới.' });
+    setAutoGenControls('idle');
+    showAutoGenPreview(data, requestBody);
+    openAutoGenBoard();
+  } catch (err) {
+    autoGenJobId = null;
+    // Loi (vd hang AI qua tai 503): cho "Thu lai" cung yeu cau hoac "Huy".
+    setAutoGenControls('stopped');
+    document.getElementById('autoGenResumeBtn').textContent = '🔁 Thử lại';
+    autoGenStopped = true;
+    statusEl.textContent = '';
+    markAutoGenFailed('❌ Sinh đề thất bại.');
+    autoGenError('Lỗi sinh đề tự động: ' + err.message);
+    openAutoGenBoard();
+  } finally {
+    autoGenRunning = false;
+    if (!autoGenStopped && !autoGenPending) document.getElementById('autoGenerateBtn').disabled = false;
+  }
+}
+
+document.getElementById('autoGenerateBtn').addEventListener('click', async () => {
+  if (autoGenRunning) return;
+  if (autoGenPreviewBlocks && !await askAutoGen('Sinh đề mới?', 'Đề đang xem trước chưa được lưu sẽ bị bỏ. Bạn có muốn sinh đề mới không?', 'Sinh đề mới')) return;
+  const requestBody = buildAutoGenRequest();
+  if (!requestBody) return;
+  autoGenPending = null;
+  autoGenPreviewBlocks = null;
+  runAutoGenJob(requestBody);
+});
+document.getElementById('autoGenStopBtn').addEventListener('click', async () => {
+  if (!autoGenJobId) return;
+  if (!await askAutoGen('Bạn có muốn dừng không?', 'AI sẽ ngừng ngay; yêu cầu và cài đặt được giữ để bấm "Tiếp tục" (sinh lại từ đầu). Phần token AI đã sinh trước khi dừng có thể vẫn bị hãng tính phí.', 'Dừng')) return;
+  if (autoGenJobId) await fetch(`/api/generate/jobs/${autoGenJobId}/cancel`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: 'stop' }) });
+});
+document.getElementById('autoGenCancelBtn').addEventListener('click', async () => {
+  if (!await askAutoGen('Bạn có muốn hủy toàn bộ không?', 'Việc sinh đề, câu hỏi của AI và đề xem trước (nếu có) sẽ bị bỏ hết. Không thể hoàn tác.', 'Hủy toàn bộ')) return;
+  const jobId = autoGenJobId;
+  if (jobId) {
+    autoGenJobId = null; // vong hoi trang thai tu thoat
+    await fetch(`/api/generate/jobs/${jobId}/cancel`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: 'cancel' }) }).catch(() => {});
+  }
+  resetAutoGenBoard();
+  showCopyToast('✖ Đã hủy toàn bộ việc sinh đề.', 4000);
+});
+document.getElementById('autoGenResumeBtn').addEventListener('click', () => {
+  if (autoGenRunning || !autoGenLastRequest) return;
+  runAutoGenJob(autoGenLastRequest);
+});
+document.getElementById('autoGenSaveBtn').addEventListener('click', () => {
+  if (!autoGenPreviewBlocks) return;
+  const blocks = autoGenPreviewBlocks;
+  applyAutoGenTitle(autoGenLastRequest?.topic);
+  applyGeneratedBlocks(blocks); // dua vao trinh soan de va luu ngay vao Lich su
+  const count = blocks.reduce((n, blk) => n + blk.questions.length, 0);
+  const title = document.getElementById('examTitleInput').value;
+  resetAutoGenBoard();
+  document.getElementById('autoGenerateStatus').textContent = `✅ Đã lưu đề "${title}" (${count} câu).`;
+  showCopyToast(`💾 Đã lưu đề "${title}" (${count} câu) vào trình soạn đề và Lịch sử.`, 5000);
+  autoGenDialog.close();
+});
+document.getElementById('autoGenRegenBtn').addEventListener('click', async () => {
+  if (autoGenRunning || !autoGenLastRequest) return;
+  if (!await askAutoGen('Sinh lại đề?', 'Đề đang xem trước sẽ bị bỏ và AI sinh đề mới với cùng yêu cầu (tốn thêm một lượt gọi API).', 'Sinh lại')) return;
+  autoGenPreviewBlocks = null;
+  runAutoGenJob(autoGenLastRequest);
+});
+function continueAfterQuestions(answer) {
+  if (!autoGenPending || autoGenRunning) return;
+  const { requestBody, questions } = autoGenPending;
+  const clarifications = [...(requestBody.clarifications || []), { question: questions, answer }];
+  autoGenPending = null;
+  runAutoGenJob({ ...requestBody, clarifications });
+}
+document.getElementById('autoGenSendAnswer').addEventListener('click', () => {
+  const answer = document.getElementById('autoGenAnswer').value.trim();
+  if (!answer) { autoGenError('Hãy nhập câu trả lời cho AI, hoặc bấm "Bỏ qua, cứ ra đề".'); return; }
+  continueAfterQuestions(answer);
+});
+document.getElementById('autoGenSkipAnswer').addEventListener('click', () => {
+  continueAfterQuestions('Không có thêm thông tin. Hãy tự chọn phương án hợp lý nhất và ra đề ngay, không hỏi thêm.');
+});
+document.getElementById('autoGenDiscardBtn').addEventListener('click', async () => {
+  if (!await askAutoGen('Bỏ đề này?', 'Đề vừa sinh chưa được lưu sẽ bị xóa khỏi bảng.', 'Bỏ đề')) return;
+  resetAutoGenBoard();
 });
 
 loadModels();
+loadLiveCloudModels();
 loadResources();
 
 // ---------- Load exam from share link on page load ----------
@@ -1606,9 +2339,10 @@ function scheduleArchiveSave(opts = {}) {
 }
 
 async function doArchiveSave() {
-  if (!canAutosaveArchive()) return;
-  if (archiveSaveInFlight) { archiveSaveQueued = true; return; }
+  if (!canAutosaveArchive()) return false;
+  if (archiveSaveInFlight) { archiveSaveQueued = true; return false; }
   archiveSaveInFlight = true;
+  let saved = false;
   try {
     const payload = buildExamPayload();
     if (state.archiveId) payload.exam_id = state.archiveId;
@@ -1619,13 +2353,42 @@ async function doArchiveSave() {
     });
     const data = await res.json();
     if (data.success && data.exam_id) state.archiveId = data.exam_id;
-  } catch {
+    saved = Boolean(data.success);
+    if (!saved) state.lastArchiveError = data.error || `HTTP ${res.status}`;
+  } catch (err) {
     // Luu kho la tinh nang nen - loi mang khong duoc chan luong soan de.
+    state.lastArchiveError = err.message;
   } finally {
     archiveSaveInFlight = false;
     if (archiveSaveQueued) { archiveSaveQueued = false; scheduleArchiveSave(); }
   }
+  return saved;
 }
+
+// Luu ngay (nut "Luu de" / "Ap nen"): cho lan luu dang chay xong roi luu lai
+// de chac chan ban moi nhat da vao kho.
+async function saveExamNow() {
+  if (!canAutosaveArchive()) { showCopyToast('Chưa có đề nào để lưu.', 5000); return false; }
+  clearTimeout(archiveSaveTimer);
+  archiveSaveTimer = null;
+  while (archiveSaveInFlight) await new Promise(r => setTimeout(r, 100));
+  archiveSaveQueued = false;
+  const ok = await doArchiveSave();
+  showCopyToast(ok ? `💾 Đã lưu đề "${state.title || 'Đề kiểm tra'}" vào Lịch sử.` : `Không lưu được đề: ${state.lastArchiveError || 'lỗi không rõ'}`, 5000);
+  return ok;
+}
+
+document.getElementById('saveExamBtn').addEventListener('click', saveExamNow);
+document.getElementById('bgApplyToExamBtn').addEventListener('click', async () => {
+  if (!state.blocks.length) { showCopyToast('Hãy sinh hoặc mở một đề trước khi áp nền.', 5000); return; }
+  const { enabled, file, opacity, fit } = state.background;
+  if (enabled && !file) { showCopyToast('Chọn ảnh nền trước khi áp.', 5000); return; }
+  state.examBackground = enabled ? { file, opacity, fit } : null;
+  updateExamBackgroundStatus();
+  if (await saveExamNow()) {
+    showCopyToast(state.examBackground ? '📌 Đã áp nền vào đề đang mở và lưu. Mở lại đề từ Lịch sử sẽ có sẵn nền.' : 'Đã gỡ nền khỏi đề đang mở và lưu.', 5000);
+  }
+});
 
 function flushArchiveSaveOnUnload() {
   // Chi gui khi con thay doi chua luu (dang cho debounce). Neu khong co timer
@@ -1766,8 +2529,10 @@ function loadArchivedExamIntoState(exam) {
   state.duration_minutes = exam.duration_minutes || null;
   state.school_header = exam.school_header || '';
   state.blocks = Array.isArray(exam.blocks) ? exam.blocks : [];
+  state.template_binding = exam.template_binding || null;
   ensureIds(state.blocks);
   normalizeExamMath(state.blocks); // TASK E: nang cap cong thuc toan de cu -> $...$
+  restoreExamBackground(exam.background);
   state.archiveId = exam.exam_id;
   state.examId = null;
   state.activeShareCode = null;
@@ -1783,6 +2548,7 @@ function loadArchivedExamIntoState(exam) {
   toggleActionButtons(true);
   document.getElementById('generateMultiCodeBtn').disabled = false;
   hideError();
+  warnBrokenMath(state.blocks);
 }
 
 async function deleteArchivedExam(ex) {

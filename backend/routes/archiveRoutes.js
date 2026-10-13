@@ -2,6 +2,7 @@ const express = require('express');
 const crypto = require('crypto');
 const { getDb } = require('../database');
 const { validateExamPayload } = require('../examValidation');
+const { buildAssetManifest } = require('../templates/assetManifest');
 
 const router = express.Router();
 
@@ -50,6 +51,8 @@ router.get('/:exam_id', async (req, res) => {
         duration_minutes: payload.duration_minutes != null ? payload.duration_minutes : row.duration_minutes,
         school_header: payload.school_header != null ? payload.school_header : row.school_header,
         blocks: Array.isArray(payload.blocks) ? payload.blocks : [],
+        template_binding: payload.template_binding || null,
+        background: payload.background || null,
         created_at: row.created_at,
         updated_at: row.updated_at
       }
@@ -60,9 +63,26 @@ router.get('/:exam_id', async (req, res) => {
   }
 });
 
+// Nen gan vao de: chi ten file trong resources/backgrounds (khong duong dan),
+// do mo 0,05-1 va cach dat anh. Sai dinh dang -> null.
+function normalizeBackground(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const file = typeof value.file === 'string' ? value.file : '';
+  if (!/^[\w.-]{1,200}$/.test(file) || file.startsWith('.')) return null;
+  const opacity = Number(value.opacity);
+  if (!Number.isFinite(opacity) || opacity < 0.05 || opacity > 1) return null;
+  return { file, opacity, fit: value.fit === 'contain' ? 'contain' : 'cover' };
+}
+
 router.post('/', async (req, res) => {
   const db = await getDb();
-  const { exam_id, title, subject, duration_minutes, school_header, blocks } = req.body;
+  const { exam_id, title, subject, duration_minutes, school_header, blocks, template_binding } = req.body;
+  const hasBackground = Object.prototype.hasOwnProperty.call(req.body, 'background');
+  let background = null;
+  if (hasBackground && req.body.background != null) {
+    background = normalizeBackground(req.body.background);
+    if (!background) return res.status(400).json({ success: false, error: 'background không hợp lệ' });
+  }
 
   if (!title || !String(title).trim()) {
     return res.status(400).json({ success: false, error: 'Thieu title' });
@@ -70,25 +90,57 @@ router.post('/', async (req, res) => {
   if (!Array.isArray(blocks)) {
     return res.status(400).json({ success: false, error: 'blocks khong hop le' });
   }
+  if (template_binding != null && (typeof template_binding !== 'object' || Array.isArray(template_binding) ||
+      Buffer.byteLength(JSON.stringify(template_binding), 'utf8') > 1024 * 1024)) {
+    return res.status(400).json({ success: false, error: 'template_binding không hợp lệ hoặc quá lớn' });
+  }
   const validationErrors = validateExamPayload(blocks);
   if (validationErrors.length > 0) {
     return res.status(400).json({ success: false, error: 'Du lieu de thi khong hop le', details: validationErrors });
   }
 
-  const payloadJson = JSON.stringify({
+  const payload = {
     title: String(title).trim(),
     subject: subject || '',
     duration_minutes: duration_minutes != null ? duration_minutes : null,
     school_header: school_header || '',
     blocks
-  });
+  };
+  if (Object.prototype.hasOwnProperty.call(req.body, 'template_binding') && template_binding != null) {
+    payload.template_binding = template_binding;
+  }
+  if (background) payload.background = background;
 
   try {
     let examId = exam_id;
     let existing = null;
     if (examId) {
-      existing = await db.get('SELECT exam_id FROM SAVED_EXAM WHERE exam_id = ?', [examId]);
+      existing = await db.get('SELECT exam_id, payload_json FROM SAVED_EXAM WHERE exam_id = ?', [examId]);
     }
+
+    // Older clients omit the new field. Preserve the existing snapshot in that
+    // case; explicit null is the only request that clears the association.
+    if (existing && !Object.prototype.hasOwnProperty.call(req.body, 'template_binding')) {
+      try {
+        const previous = JSON.parse(existing.payload_json || '{}');
+        if (previous.template_binding) payload.template_binding = previous.template_binding;
+      } catch { /* legacy payload is malformed; exam fields still save */ }
+    }
+    // Tuong tu: client cu khong gui "background" -> giu nen da gan cho de.
+    if (existing && !hasBackground) {
+      try {
+        const previous = JSON.parse(existing.payload_json || '{}');
+        const kept = normalizeBackground(previous.background);
+        if (kept) payload.background = kept;
+      } catch { /* legacy payload is malformed; exam fields still save */ }
+    }
+    if (payload.template_binding?.template_snapshot) {
+      payload.template_binding = {
+        ...payload.template_binding,
+        asset_manifest: buildAssetManifest(payload.template_binding.template_snapshot, payload.template_binding.asset_manifest)
+      };
+    }
+    const payloadJson = JSON.stringify(payload);
 
     if (existing) {
       // Khong dung lai deleted_at o day: neu de da bi xoa (tombstone), mot lan

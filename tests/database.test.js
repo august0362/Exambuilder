@@ -9,13 +9,13 @@ const { getDb, closeDb } = require('../backend/database');
 describe('database.js (SQLite schema)', () => {
   afterEach(async () => { await closeDb(); });
 
-  test('TC-DB-01: getDb() tao du 11 bang (5 de thi + 4 module LLM + SAVED_EXAM + SYNC_SETTINGS)', async () => {
+  test('TC-DB-01: getDb() tao cac bang cu va them bang template', async () => {
     const db = await getDb();
     const rows = await db.all("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name");
     const tableNames = rows.map(r => r.name).sort();
     expect(tableNames).toEqual([
       'EXAM', 'EXAM_SHARE', 'LLM_MODEL', 'LLM_SETTINGS', 'QUESTION', 'QUESTION_BLOCK', 'QUESTION_OPTION',
-      'RESOURCE_DOCUMENT', 'RESOURCE_SECTION', 'SAVED_EXAM', 'SYNC_SETTINGS'
+      'RESOURCE_DOCUMENT', 'RESOURCE_HISTORY', 'RESOURCE_SECTION', 'SAVED_EXAM', 'SYNC_SETTINGS', 'TEMPLATE', 'TEMPLATE_VERSION'
     ]);
   });
 

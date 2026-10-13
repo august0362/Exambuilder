@@ -130,6 +130,32 @@ describe('POST /api/generate', () => {
       await request(buildApp()).post('/api/generate').send({ model_id: modelId, section_ids: [sectionId] });
       expect(mockGenerate.mock.calls[0][0]).toContain('Noi dung chuong 1 ve so nguyen');
     });
+
+    test('TC-GEN-10: extra_instructions duoc dua vao prompt gui cho LLM', async () => {
+      const modelId = await insertCloudModel();
+      await insertApiKey();
+      mockGenerate.mockResolvedValue(VALID_RAW_TEXT);
+
+      await request(buildApp()).post('/api/generate').send({
+        model_id: modelId, extra_instructions: 'Ra de theo phong cach thi THPT Quoc gia'
+      });
+      expect(mockGenerate.mock.calls[0][0]).toContain('Ra de theo phong cach thi THPT Quoc gia');
+    });
+
+    test('TC-GEN-11: truyen thang provider + model_name (khong can dang ky LLM_MODEL) -> 200', async () => {
+      await insertApiKey('anthropic', 'sk-ant-real');
+      mockGenerate.mockResolvedValue(VALID_RAW_TEXT);
+
+      const res = await request(buildApp()).post('/api/generate').send({
+        provider: 'anthropic', model_name: 'claude-opus-5'
+      });
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(mockCreateProvider).toHaveBeenCalledWith(
+        expect.objectContaining({ source_type: 'cloud', provider: 'anthropic', model_name: 'claude-opus-5' }),
+        'sk-ant-real'
+      );
+    });
   });
 
   describe('Negative Cases', () => {
@@ -148,6 +174,21 @@ describe('POST /api/generate', () => {
       const res = await request(buildApp()).post('/api/generate').send({ model_id: modelId });
       expect(res.status).toBe(400);
       expect(res.body.error).toMatch(/API key/);
+    });
+
+    test('TC-GEN-12: truyen provider + model_name nhung chua cau hinh key -> 400', async () => {
+      const res = await request(buildApp()).post('/api/generate').send({
+        provider: 'openai', model_name: 'gpt-4o-mini'
+      });
+      expect(res.status).toBe(400);
+      expect(res.body.error).toMatch(/API key/);
+    });
+
+    test('TC-GEN-13: provider khong hop le tra ve 400', async () => {
+      const res = await request(buildApp()).post('/api/generate').send({
+        provider: 'unknown', model_name: 'x'
+      });
+      expect(res.status).toBe(400);
     });
 
     test('TC-GEN-08: provider.generate nem loi (vd loi mang) -> 502', async () => {
@@ -172,5 +213,48 @@ describe('POST /api/generate', () => {
       // Toi da 2 lan thu lai => tong 3 lan goi (1 lan dau + 2 lan retry).
       expect(mockGenerate).toHaveBeenCalledTimes(3);
     });
+  });
+});
+
+describe('Bang so luong cau hoi la uu tien cao nhat', () => {
+  const TWO_TN = VALID_RAW_TEXT + VALID_RAW_TEXT.replace('=PHAN_1=\n', '');
+
+  test('TC-GEN-SPEC-01: AI tra lech so cau -> nhac sua; lan sau dung bang -> 200 khong canh bao', async () => {
+    const modelId = await insertCloudModel();
+    await insertApiKey('openai', 'sk-x');
+    mockGenerate.mockResolvedValueOnce(VALID_RAW_TEXT).mockResolvedValueOnce(TWO_TN);
+    const res = await request(buildApp()).post('/api/generate').send({ model_id: modelId, question_spec: [{ loai: 'TN', muc_do: 'Nhan_Biet', so_luong: 2 }] });
+    expect(res.status).toBe(200);
+    expect(res.body.spec_warnings).toBeUndefined();
+    expect(res.body.blocks[0].questions).toHaveLength(2);
+    expect(mockGenerate).toHaveBeenCalledTimes(2);
+    expect(mockGenerate.mock.calls[1][0]).toContain('Số lượng câu chưa đúng BẢNG');
+  });
+
+  test('TC-GEN-SPEC-02: lech o moi lan thu -> van tra de kem spec_warnings, khong mat noi dung', async () => {
+    const modelId = await insertCloudModel();
+    await insertApiKey('openai', 'sk-x');
+    mockGenerate.mockResolvedValue(VALID_RAW_TEXT);
+    const res = await request(buildApp()).post('/api/generate').send({ model_id: modelId, question_spec: [{ loai: 'TN', muc_do: 'Nhan_Biet', so_luong: 3 }] });
+    expect(res.status).toBe(200);
+    expect(res.body.blocks[0].questions).toHaveLength(1);
+    expect(res.body.spec_warnings).toEqual(['trắc nghiệm Nhan Biet: cần 3, AI trả 1']);
+    expect(mockGenerate).toHaveBeenCalledTimes(3);
+  });
+
+  test('TC-GEN-SPEC-03: bang trong (chi dung yeu cau viet tay/mac dinh) -> khong kiem so cau', async () => {
+    const modelId = await insertCloudModel();
+    await insertApiKey('openai', 'sk-x');
+    mockGenerate.mockResolvedValue(VALID_RAW_TEXT);
+    const res = await request(buildApp()).post('/api/generate').send({ model_id: modelId, question_spec: [], extra_instructions: '5 cau trac nghiem' });
+    expect(res.status).toBe(200);
+    expect(mockGenerate).toHaveBeenCalledTimes(1);
+    expect(mockGenerate.mock.calls[0][0]).toContain('5 cau trac nghiem');
+  });
+
+  test('TC-GEN-SPEC-04: bang khong hop le -> 400', async () => {
+    const modelId = await insertCloudModel();
+    const res = await request(buildApp()).post('/api/generate').send({ model_id: modelId, question_spec: [{ loai: 'XYZ', muc_do: 'Nhan_Biet', so_luong: 1 }] });
+    expect(res.status).toBe(400);
   });
 });

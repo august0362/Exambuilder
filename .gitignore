@@ -5,3 +5,8 @@ resources/models/
 
 # Ghi chu ca nhan / chua token - KHONG commit
 Document.txt
+gitdetail.txt
+prompt_update.txt
+
+# Anh nen giao vien tai len (du lieu nguoi dung, giong exam.db)
+resources/backgrounds/
