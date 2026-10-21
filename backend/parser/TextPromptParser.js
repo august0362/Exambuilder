@@ -9,6 +9,52 @@ const TITLE_MAP = { 'trac nghiem': 'Trắc nghiệm', 'tu luan': 'Tự luận' }
 // Danh sach nhan truong dung de "va lai" xuong dong bi mat (xem
 // _repairMissingNewlines) - phai trung khop chinh xac voi FIELD_REGEX o tren.
 const FIELD_NAMES = 'Loai|Muc_Do|De_Bai|Dap_An|Loi_Giai|So_Dong_Nhap';
+// Dong mo dau mot y nho cua cau hoi: "a) ...", "b) ...", "1) ...". Dong tiep
+// noi bat dau nhu vay duoc GIU xuong dong (khong noi bang dau cach) de cac y
+// hien moi y mot dong. Chi nhan ")" (khong nhan "a." / "A.") de khong nham voi
+// lua chon trac nghiem "A. ..." va so thap phan.
+const SUBPART_LINE_REGEX = /^(?:[a-h]|[1-9])\)\s/;
+const SUBPART_SERIES = [['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'], ['1', '2', '3', '4', '5', '6', '7', '8', '9']];
+const MATH_MASK_REGEX = /\$\$[^$]+\$\$|\$[^$]*\$/g;
+
+/**
+ * AI hay don cac y nho vao 1 dong: "... : 1) Tim x. 2) Tim y. 3) ...". Chen
+ * xuong dong truoc moi nhan y khi co it nhat 2 nhan LIEN TIEP dung thu tu
+ * (a) b) ... hoac 1) 2) ...). Nhan chi tinh khi dung dau van ban/dau dong hoac
+ * ngay sau dau ket cau (. : ; ? !) + khoang trang, va theo sau la khoang trang
+ * - tranh tach nham bieu thuc nhu "(x - 1)(x + 2)". Bo qua noi dung trong
+ * $...$. Idempotent: chay lai tren ket qua khong doi gi.
+ */
+export function splitSubparts(text) {
+  if (typeof text !== 'string' || !text) return text;
+  const spans = [];
+  const masked = text.replace(MATH_MASK_REGEX, s => `\u0000${spans.push(s) - 1}\u0000`);
+  const positions = new Set();
+  for (const series of SUBPART_SERIES) {
+    let from = 0;
+    const found = [];
+    for (const label of series) {
+      const re = new RegExp(`(^|\\n|[.:;?!]\\s+)(${label}\\)\\s)`, 'g');
+      re.lastIndex = from;
+      const m = re.exec(masked);
+      if (!m) break;
+      const pos = m.index + m[1].length;
+      found.push(pos);
+      from = pos + 1;
+    }
+    if (found.length >= 2) found.forEach(pos => positions.add(pos));
+  }
+  if (!positions.size) return text;
+  let out = '';
+  let last = 0;
+  for (const pos of [...positions].sort((a, b) => a - b)) {
+    out += masked.slice(last, pos);
+    if (pos > 0 && !out.endsWith('\n')) out = out.replace(/[ \t]+$/, '') + '\n';
+    last = pos;
+  }
+  out += masked.slice(last);
+  return out.replace(/\u0000(\d+)\u0000/g, (_, i) => spans[+i]);
+}
 
 export class TextPromptParser extends IQuestionParser {
   parse(rawContent) {
@@ -156,8 +202,11 @@ export class TextPromptParser extends IQuestionParser {
         options.push({ option_key: optionMatch[1].toUpperCase(), option_text: optionMatch[2].trim() });
         currentField = null;
       } else if (currentField) {
-        fields[currentField] += ' ' + line;
+        fields[currentField] += (SUBPART_LINE_REGEX.test(line) ? '\n' : ' ') + line;
       }
+    }
+    for (const key of ['de_bai', 'loi_giai', 'dap_an']) {
+      if (fields[key]) fields[key] = splitSubparts(fields[key]);
     }
 
     const rawType = (fields['loai'] || '').trim().toUpperCase();

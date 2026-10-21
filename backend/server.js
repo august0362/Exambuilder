@@ -12,6 +12,9 @@ const templateRoutes = require('./routes/templateRoutes');
 const templatePromptRoutes = require('./routes/templatePromptRoutes');
 const { errorHandler } = require('./errorHandler');
 const { lanAddresses } = require('./network');
+const { closeDb } = require('./database');
+const autoPush = require('./sync/autoPush');
+const { createShutdown } = require('./shutdown');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -48,7 +51,18 @@ process.on('unhandledRejection', err => {
   console.error('[ExamBuilder] Loi chua xu ly (server van chay):', err);
 });
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
+  autoPush.start();
   console.log(`Server running at http://localhost:${PORT}`);
   for (const ip of lanAddresses()) console.log(`May khac cung mang LAN/Wi-Fi mo: http://${ip}:${PORT}`);
+});
+const shutdown = createShutdown({ server, autoPush, closeDb });
+for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
+  process.on(signal, () => shutdown(signal).catch(err => {
+    console.error('[ExamBuilder] Loi khi dong ung dung:', err.message);
+    process.exit(1);
+  }));
+}
+process.on('message', message => {
+  if (message === 'shutdown') shutdown().catch(() => process.exit(1));
 });

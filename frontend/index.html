@@ -178,32 +178,42 @@
       </div>
       <div class="autogen-body">
         <div class="autogen-form">
-      <label class="field-label">Tên đề (đặt cho đề mới sinh)
-        <input type="text" id="autoTitleInput" placeholder="Để trống = &quot;Đề kiểm tra – &lt;chủ đề&gt;&quot;" />
-      </label>
-      <label class="field-label">Model
-        <select id="autoModelSelect">
-          <option value="">— Chưa có model, vào Cài đặt để thêm —</option>
-        </select>
-      </label>
-      <label class="field-label">Chủ đề (dùng khi không chọn tài liệu, hoặc bổ sung ngữ cảnh)
-        <input type="text" id="autoTopicInput" placeholder="VD: Toán 10 - Hàm số bậc nhất" />
-      </label>
-      <label class="field-label">Yêu cầu cho AI (tùy chọn — ghép vào cuối prompt sẵn có)
-        <textarea id="autoExtraPromptInput" rows="3" placeholder="VD: 10 câu trắc nghiệm (4 nhận biết, 4 thông hiểu, 2 vận dụng) và 2 câu tự luận vận dụng cao; ưu tiên bài toán thực tế, phong cách đề THPT..."></textarea>
-      </label>
-      <p class="hint">Có thể ghi luôn số câu, loại câu, mức độ ở đây. Nếu có điền bảng số câu bên dưới thì <strong>bảng được ưu tiên</strong>: số câu/loại/mức độ theo bảng, còn yêu cầu viết tay dùng cho chủ đề, dạng bài, phong cách. Để trống cả hai thì AI dùng số câu mặc định của prompt.</p>
-      <label class="field-label">Tài liệu tham khảo (tùy chọn)
-        <select id="autoDocSelect">
-          <option value="">— Không dùng tài liệu —</option>
-        </select>
-      </label>
-      <div id="autoSectionCheckboxes" class="auto-section-checkboxes"></div>
-      <p class="hint">AI đọc các phần được tick cùng prompt (kiểu RAG): tài liệu vừa giới hạn thì gửi nguyên văn, quá dài thì chọn các đoạn liên quan nhất tới chủ đề/yêu cầu. Bỏ tick hết = dùng toàn bộ tài liệu. Tài liệu càng dài, chi phí API càng cao.</p>
-
-      <details class="auto-spec-details" id="autoSpecDetails">
-        <summary id="autoSpecSummary">Bảng số câu theo loại × mức độ (tùy chọn)</summary>
-      <p class="hint">Để 0 = không sinh loại đó. Bảng có số nào thì toàn bộ cấu trúc đề theo bảng.</p>
+          <div class="autogen-row">
+            <label class="field-label">Model AI
+              <select id="autoModelSelect">
+                <option value="">— Chưa có model, vào Cài đặt để thêm —</option>
+              </select>
+            </label>
+            <label class="field-label">Khung đề
+              <select id="autoFrameSelect">
+                <option value="">Đề tự do (AI tự chia câu)</option>
+              </select>
+            </label>
+          </div>
+          <label class="field-label">Chủ đề
+            <input type="text" id="autoTopicInput" placeholder="VD: Toán 9 - Căn bậc hai và rút gọn biểu thức" />
+          </label>
+          <label class="field-label">Yêu cầu cho AI (tùy chọn)
+            <textarea id="autoExtraPromptInput" rows="3" placeholder="VD: 10 câu trắc nghiệm (4 nhận biết, 4 thông hiểu, 2 vận dụng) và 2 câu tự luận vận dụng cao; ưu tiên bài toán thực tế..."></textarea>
+          </label>
+          <div class="autogen-row autogen-doc-row">
+            <label class="field-label">Tài liệu tham khảo
+              <select id="autoDocSelect">
+                <option value="">— Không dùng tài liệu —</option>
+              </select>
+            </label>
+            <button id="openResourceManagerBtn" type="button" class="secondary-btn">📚 Quản lý tài liệu</button>
+          </div>
+          <details class="auto-section-details" id="autoSectionDetails" hidden>
+            <summary id="autoSectionSummary">Phần tài liệu AI đọc</summary>
+            <div id="autoSectionCheckboxes" class="auto-section-checkboxes"></div>
+            <p class="hint">Bỏ tick hết = AI đọc toàn bộ tài liệu. Tài liệu dài thì AI chọn các đoạn liên quan nhất tới chủ đề/yêu cầu; càng dài càng tốn phí API.</p>
+          </details>
+          <div class="autogen-structure">
+            <span class="autogen-chip" id="autoStructureChip" aria-live="polite"></span>
+            <details class="auto-spec-details" id="autoSpecDetails">
+              <summary id="autoSpecSummary">📊 Chỉnh số câu chi tiết</summary>
+              <p class="hint">Để 0 = không sinh loại đó. Bảng có số thì số câu/loại/mức độ theo bảng; yêu cầu viết tay chỉ dùng cho chủ đề, dạng bài, phong cách.</p>
       <table class="auto-spec-table" id="autoSpecTable">
         <thead>
           <tr><th></th><th>NB</th><th>TH</th><th>VD</th><th>VDC</th></tr>
@@ -239,23 +249,14 @@
           </tr>
         </tbody>
       </table>
-      </details>
-
-
-      <details class="prompt-accordion" id="resourceLibraryAccordion">
-        <summary>📚 Quản lý thư viện tài liệu</summary>
-        <div class="prompt-accordion-body">
-          <div class="meta-row">
-            <input type="text" id="newDocTitle" placeholder="Tên tài liệu (VD: SGK Toán 10 - Chương 1)" />
-            <input type="text" id="newDocSubject" placeholder="Môn học" />
+            </details>
           </div>
-          <button id="addDocBtn" type="button" class="secondary-btn">+ Tạo tài liệu</button>
-          <h4 class="resource-subheading">Tài liệu hiện có</h4>
-          <div id="docListForSections"></div>
-          <h4 class="resource-subheading">Lịch sử cập nhật</h4>
-          <ol id="resourceHistory" class="resource-history"></ol>
-        </div>
-      </details>
+          <details class="autogen-more">
+            <summary>Tùy chọn khác</summary>
+            <label class="field-label">Tên đề (đặt cho đề mới sinh)
+              <input type="text" id="autoTitleInput" placeholder="Để trống = &quot;Đề kiểm tra – &lt;chủ đề&gt;&quot;" />
+            </label>
+          </details>
         </div>
         <aside class="autogen-side">
           <label class="switch autogen-ask-toggle">
@@ -304,6 +305,23 @@
         <p class="hint" id="autoGenPreviewInfo"></p>
         <div class="autogen-preview-paper" id="autoGenPreviewPaper"></div>
       </section>
+      <dialog id="resourceManagerDialog" class="resource-dialog" aria-labelledby="resourceManagerTitle">
+        <div class="autogen-head">
+          <h3 id="resourceManagerTitle">📚 Thư viện tài liệu tham khảo</h3>
+          <button type="button" id="resourceManagerCloseBtn" class="secondary-btn">✕ Đóng</button>
+        </div>
+        <p class="hint">Tài liệu (SGK, bài giảng...) chia theo phần; khi sinh đề, AI đọc các phần bạn chọn.</p>
+        <div class="meta-row">
+          <input type="text" id="newDocTitle" placeholder="Tên tài liệu (VD: SGK Toán 10 - Chương 1)" />
+          <input type="text" id="newDocSubject" placeholder="Môn học" />
+        </div>
+        <button id="addDocBtn" type="button" class="secondary-btn">+ Tạo tài liệu</button>
+        <p class="resource-status" id="resourceManagerStatus" aria-live="polite"></p>
+        <h4 class="resource-subheading">Tài liệu hiện có</h4>
+        <div id="docListForSections"></div>
+        <h4 class="resource-subheading">Lịch sử cập nhật</h4>
+        <ol id="resourceHistory" class="resource-history"></ol>
+      </dialog>
       <dialog id="autoGenConfirm" class="autogen-confirm">
         <h4 id="autoGenConfirmTitle"></h4>
         <p id="autoGenConfirmText"></p>
@@ -422,6 +440,25 @@
       </details>
     </div>
   </details>
+
+  <dialog id="wordExportDialog" class="autogen-confirm" aria-labelledby="wordExportTitle">
+    <h4 id="wordExportTitle">Xuất Word theo mẫu</h4>
+    <p class="hint" id="wordExportInfo"></p>
+    <label class="field-label">Bản in
+      <select id="wordExportMode">
+        <option value="student">Học sinh (không đáp án)</option>
+        <option value="teacher">Giáo viên (kèm đáp án, lời giải)</option>
+        <option value="answer_key">Đáp án riêng</option>
+        <option value="combined">Đề và đáp án cuối file</option>
+      </select>
+    </label>
+    <p class="error-message" id="wordExportError"></p>
+    <div class="modal-actions">
+      <button type="button" id="wordExportPlainBtn" class="secondary-btn" title="Bỏ qua bố cục mẫu, xuất như đề thường">Xuất kiểu thường</button>
+      <button type="button" id="wordExportCancelBtn" class="secondary-btn">Hủy</button>
+      <button type="button" id="wordExportTemplateBtn" class="primary-btn">📄 Xuất Word theo mẫu</button>
+    </div>
+  </dialog>
 
   <div class="copy-toast" id="copyToast"></div>
 </section>
@@ -594,10 +631,10 @@
     <details class="sync-details" id="syncDetails">
       <summary>☁️ Đồng bộ sang thiết bị khác (GitHub Gist)</summary>
       <div class="sync-details-body">
-        <p class="hint">
-          Dùng chung 1 <strong>Personal Access Token</strong> (chỉ cần quyền <code>gist</code>) và 1
-          <strong>Gist ID</strong> cho mọi thiết bị.
-        </p>
+        <p class="hint" id="syncDescription">Tự nhận kho đề chung, không cần token. Chỉ chủ kho cần token để đẩy thay đổi lên.</p>
+        <label class="hint"><input type="checkbox" id="autoPullOnOpen" checked /> Tự kéo kho đề khi mở ứng dụng hoặc có mạng trở lại</label>
+        <label class="hint"><input type="checkbox" id="autoPushOnClose" checked /> Tự đẩy kho đề khi đóng web (cần token của chủ kho)</label>
+        <p class="hint" id="autoPushStatus">Đề được lưu trên máy trước khi đẩy. Mất mạng sẽ chờ để thử lại.</p>
 
         <div class="sync-status-rows">
           <div class="sync-status-row">
@@ -630,6 +667,7 @@
         </div>
 
         <div class="sync-subpanel form-hidden" id="changeGistPanel">
+          <button id="useSharedGistBtn" type="button" class="secondary-btn">Dùng kho đề chung mặc định</button>
           <p class="hint"><strong>Cách 1</strong> — Tạo Gist mới (thiết bị đầu tiên; cần đã lưu Token):</p>
           <button id="createGistBtn" type="button" class="secondary-btn">🆕 Tạo Gist ID mới</button>
           <p class="hint"><strong>Cách 2</strong> — Dùng Gist ID đã có (copy từ thiết bị khác):</p>

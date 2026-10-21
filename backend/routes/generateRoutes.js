@@ -166,7 +166,7 @@ async function runGeneration(reqBody, onProgress = () => {}, { signal } = {}) {
   let prompt;
   try {
     prompt = rawMode
-      ? buildRawPrompt(reqBody.raw_prompt, { allowQuestions: askAllowed, clarifications })
+      ? buildRawPrompt(reqBody.raw_prompt, { allowQuestions: askAllowed, clarifications, sectionsContent })
       : buildPrompt({ topic, sectionsContent, questionSpec: question_spec, extraInstructions: extra_instructions,
         allowQuestions: askAllowed, clarifications });
   } catch (err) {
@@ -210,7 +210,7 @@ async function runGeneration(reqBody, onProgress = () => {}, { signal } = {}) {
     if (questions) {
       return reply(200, { success: true, needs_input: true, questions, round: clarifications.length + 1, max_rounds: MAX_CLARIFY_ROUNDS });
     }
-    if (rawMode) return reply(200, { success: true, raw_text: rawText });
+    if (rawMode) return reply(200, { success: true, raw_text: rawText, context_info: context.info });
 
     onProgress({ stage: 'checking', attempt: attempt + 1, max_attempts: maxAttempts, message: 'Đang kiểm tra định dạng và số câu...' });
     try {

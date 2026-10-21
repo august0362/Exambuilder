@@ -1,3 +1,5 @@
+import { syncCorrectOption, templateToBlocks, templateBinding, templateExportInput } from './examFrames.js';
+
 // Template workspace is isolated from the legacy editor; only an explicit
 // "Open in exam editor" action hands its current slots to the existing flow.
 const launchButton = document.getElementById('templateSystemBtn');
@@ -217,14 +219,6 @@ async function openTemplate(id) {
     renderEditor();
     status('Đã mở mẫu. Mẫu gốc giữ cố định số phần và số câu.');
   } catch (err) { status(err.message, true); }
-}
-// is_correct phai luon suy ra tu correct_answer: bo xao lua chon cua trinh soan
-// de cu dua vao is_correct de tinh lai chu cai dap an sau khi xao.
-function syncCorrectOption(content) {
-  if (!content || !Array.isArray(content.options)) return content;
-  const key = String(content.correct_answer || '').trim().toUpperCase();
-  content.options.forEach(option => { option.is_correct = option.option_key === key; });
-  return content;
 }
 function selectedSlot() { return allSlots().find(({ slot }) => slot.slot_id === ui.selected)?.slot; }
 function reorder(direction) {
@@ -653,20 +647,11 @@ function openInLegacy() {
   const badKey = allSlots().filter(({ slot }) => slot.question_type === 'MCQ' &&
     !syncCorrectOption(structuredClone(slot.content)).options.some(option => option.is_correct));
   if (badKey.length) { status(`Còn ${badKey.length} câu trắc nghiệm có đáp án không trùng A/B/C/D của lựa chọn. Sửa đáp án trước khi mở trình soạn đề.`, true); return; }
-  const blocks = t.sections.map(section => ({ block_type: section.kind === 'ESSAY' ? 'ESSAY' : 'MULTIPLE_CHOICE', block_title: section.title,
-    questions: section.slots.map(slot => {
-      const content = syncCorrectOption(structuredClone(slot.content || {}));
-      return { question_type: slot.question_type, difficulty_level: content.difficulty_level || slot.difficulty_level,
-        content: content.content || '', correct_answer: content.correct_answer || '',
-        explanation: content.explanation || '', draft_lines_count: slot.answer_space?.lines || 0,
-        options: content.options || [],
-        template_slot_id: slot.slot_id, points: slot.points };
-    }) }));
+  const blocks = templateToBlocks(t);
   window.dispatchEvent(new CustomEvent('exambuilder:open-template', { detail: {
     blocks, title: t.defaults.exam_title || t.display_name, subject: t.defaults?.subject || '', duration_minutes: t.defaults?.duration_minutes || null,
     school_header: t.defaults?.school_header || '', template_id: t.template_id, template_version: t.template_version,
-    template_binding: { schema_version: 1, template_id: t.template_id, template_version: t.template_version,
-       template_snapshot: structuredClone(t), asset_manifest: buildAssetManifest(t) }
+    template_binding: templateBinding(t)
   } }));
   dialog.close();
 }
@@ -674,40 +659,12 @@ function missingContent() {
   return allSlots().filter(({ slot }) => !slot.content?.content?.trim() ||
     (slot.question_type === 'MCQ' && (!Array.isArray(slot.content?.options) || slot.content.options.length < 4)));
 }
-function buildAssetManifest(template) {
-  const refs = new Map();
-  const add = (assetId, role, pageNumber = null, metadata = {}) => {
-    if (typeof assetId !== 'string' || !/^(?:image|document)-[0-9a-f]{64}$/.test(assetId)) return;
-    refs.set(assetId, {
-      ...metadata, asset_id: assetId, sha256: assetId.slice(assetId.indexOf('-') + 1), role,
-      ...(pageNumber == null ? {} : { page_number: Number(pageNumber) }), transfer: 'reference_only',
-      fallback: 'keep_exam_content_and_use_basic_layout_when_asset_is_missing'
-    });
-  };
-  const background = template.appearance?.background || {};
-  const storedAsset = assetId => (background.asset_manifest || []).find(asset => asset.asset_id === assetId) || {};
-  const source = storedAsset(background.source_asset_id);
-  add(background.source_asset_id, 'source_document', null, source || {});
-  add(background.asset_id, 'page_background', null, storedAsset(background.asset_id));
-  (background.pages || []).forEach(page => add(page.asset_id, 'page_background', page.page_number, { ...page, mime: page.mime || 'image/png' }));
-  for (const section of template.sections || []) for (const slot of section.slots || []) {
-    for (const ref of slot.assets || []) add(typeof ref === 'string' ? ref : ref?.asset_id, 'question_illustration', null, typeof ref === 'object' ? ref : {});
-  }
-  return [...refs.values()].sort((a, b) => a.asset_id.localeCompare(b.asset_id));
-}
-function exportInput(mode) {
-  const t = ui.template;
-  return { template: t, mode, paper: {
-    size: t.appearance.paper, orientation: t.appearance.orientation,
-    margins: { ...t.appearance.margins_mm }
-  }, columns: t.appearance.columns,
-  maxPages: t.pagination.mode === 'max_pages' ? t.pagination.max_pages : null,
-  metadata: { exam_title: t.defaults.exam_title || t.display_name, subject: t.defaults.subject, grade: t.defaults.grade,
-    duration_minutes: t.defaults.duration_minutes, school: t.defaults.school_header } };
-}
+const exportInput = mode => templateExportInput(ui.template, mode);
+// In theo bo cuc mau (A4/A5, hai cot, vung tra loi). Tai Word theo mau nam o nut
+// "Xuat Word" cua man hinh chinh khi de dang mo duoc tao tu mau.
 function renderExportPanel(root) {
   const panel = node('section', null, 'template-prompts');
-  panel.append(node('h4', 'Xuất Word theo mẫu'));
+  panel.append(node('h4', 'In theo mẫu'));
   const mode = select('Bản in', 'student', [['student','Học sinh'],['teacher','Giáo viên'],['answer_key','Đáp án riêng'],['combined','Đề và đáp án cuối file']], () => {});
   const warnings = node('pre', '', 'template-report');
   const analyze = async () => {
@@ -715,10 +672,7 @@ function renderExportPanel(root) {
     warnings.textContent = `Ước lượng ${data.estimatedPages} trang.\n${data.warnings.map(w => w.message).join('\n')}`;
     return data;
   };
-  panel.append(mode, button('Kiểm tra phân trang', async () => {
-    try { await analyze(); status('Đã kiểm tra ước lượng phân trang.'); }
-    catch (err) { status(err.message, true); }
-  }), button('In / Lưu PDF', async () => {
+  panel.append(mode, button('In / Lưu PDF', async () => {
     if (missingContent().length) { status('Cần điền đủ đề bài và lựa chọn trước khi in.', true); return; }
     try {
       const check = await analyze();
@@ -739,122 +693,9 @@ function renderExportPanel(root) {
       pageStyle.textContent = '';
     }, { once: true });
     window.print();
-  }), button('Tải DOCX', async () => {
-    if (missingContent().length) { status('Cần điền đủ đề bài và lựa chọn trước khi xuất.', true); return; }
-    try {
-      const check = await analyze();
-      if (check.warnings.length && !confirm(`Có ${check.warnings.length} cảnh báo. Vẫn xuất DOCX?`)) return;
-      const response = await fetch('/api/template-export/docx', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(exportInput(mode.querySelector('select').value)) });
-      if (!response.ok) throw new Error((await response.json()).error || 'Xuất DOCX thất bại');
-      const url = URL.createObjectURL(await response.blob());
-      const anchor = node('a'); anchor.href = url; anchor.download = `${ui.template.template_id}.docx`;
-      document.body.append(anchor); anchor.click(); anchor.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
-      status('Đã tạo DOCX. Kiểm tra lại bố cục trong Word trước khi phát đề.');
-    } catch (err) { status(err.message, true); }
-  }), warnings);
+  }), node('p', 'Tải Word theo mẫu: bấm "Mở trong trình soạn đề" rồi dùng nút "Xuất Word" ở trang chính.', 'hint'), warnings);
   root.append(panel);
 }
-// ---------- Gui prompt mau qua AI API cua du an ----------
-// Dung lai job /api/generate/jobs voi raw_prompt: AI tra van ban, tu dan vao o
-// "Dan ket qua AI" va chay kiem tra/diff; Ap dung van can giao vien xac nhan.
-// Trang thai giu trong ui.* vi editor ve lai toan bo khi sua mau.
-function modelRequestFields(value) {
-  if (value.startsWith('cloud:')) {
-    const rest = value.slice('cloud:'.length);
-    const sep = rest.indexOf(':');
-    return { provider: rest.slice(0, sep), model_name: rest.slice(sep + 1) };
-  }
-  if (value.startsWith('local:') || value.startsWith('legacy:')) return { model_id: value.slice(value.indexOf(':') + 1) };
-  return null;
-}
-function setApiStatus(text, error = false) {
-  ui.apiStatus = text; ui.apiStatusError = error;
-  const el = dialog.querySelector('.template-api-status');
-  if (el) { el.textContent = text; el.classList.toggle('error', error); }
-}
-function syncApiButtons() {
-  dialog.querySelectorAll('.template-api-send').forEach(b => { b.disabled = Boolean(ui.apiJobId); });
-  dialog.querySelectorAll('.template-api-cancel').forEach(b => { b.hidden = !ui.apiJobId; });
-}
-function renderTemplateApiBox(panel, refreshPrompt, currentGroup) {
-  const box = node('div', null, 'template-api-box');
-  box.append(node('h4', 'Hoặc gửi thẳng qua AI API của dự án'));
-  const legacy = document.getElementById('autoModelSelect');
-  const options = [...(legacy?.options || [])].filter(o => o.value);
-  const modelSel = node('select'); modelSel.setAttribute('aria-label', 'Model AI API');
-  if (!options.length) modelSel.append(new Option('— Chưa có model: lưu API key trong ⚙️ Cài đặt —', ''));
-  options.forEach(o => modelSel.append(new Option(o.textContent, o.value)));
-  modelSel.value = ui.apiModel || legacy?.value || options[0]?.value || '';
-  modelSel.addEventListener('change', () => { ui.apiModel = modelSel.value; });
-  const askWrap = node('label', null, 'template-field');
-  const ask = node('input'); ask.type = 'checkbox'; ask.checked = ui.apiAllowAsk ?? true;
-  ask.addEventListener('change', () => { ui.apiAllowAsk = ask.checked; });
-  askWrap.append(ask, document.createTextNode(' Cho AI hỏi lại khi thiếu thông tin'));
-  const send = button('🚀 Gửi prompt qua AI API', () => runTemplateApi([], refreshPrompt, modelSel.value, ask.checked, currentGroup()), 'template-api-send');
-  const cancel = button('✖ Hủy yêu cầu', async () => {
-    if (!ui.apiJobId || !confirm('Bạn có muốn hủy yêu cầu đang gửi tới AI không?')) return;
-    const id = ui.apiJobId; ui.apiJobId = null; syncApiButtons();
-    await fetch(`/api/generate/jobs/${id}/cancel`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: 'cancel' }) }).catch(() => {});
-    setApiStatus('Đã hủy yêu cầu. Nội dung mẫu giữ nguyên.');
-  }, 'template-api-cancel');
-  const statusEl = node('p', ui.apiStatus || 'AI trả về văn bản sẽ tự dán vào ô bên dưới và được kiểm tra; bạn duyệt rồi mới Áp dụng. Tốn phí API theo hãng.', 'template-api-status');
-  statusEl.setAttribute('aria-live', 'polite');
-  statusEl.classList.toggle('error', Boolean(ui.apiStatusError));
-  box.append(modelSel, askWrap, send, cancel, statusEl);
-  if (ui.apiQuestions) {
-    const qa = node('div', null, 'template-api-qa');
-    qa.append(node('strong', '🤖 AI cần bạn trả lời'), node('pre', ui.apiQuestions.text));
-    const answer = node('textarea'); answer.rows = 3; answer.placeholder = 'Trả lời bằng chữ...';
-    const go = text => { const prev = ui.apiQuestions; ui.apiQuestions = null; runTemplateApi([...prev.clarifications, { question: prev.text, answer: text }], refreshPrompt, modelSel.value, ask.checked, currentGroup()); };
-    qa.append(answer, button('Gửi trả lời', () => { if (answer.value.trim()) go(answer.value.trim()); else setApiStatus('Hãy nhập câu trả lời cho AI.', true); }),
-      button('Bỏ qua, cứ trả kết quả', () => go('Không có thêm thông tin. Hãy tự chọn phương án hợp lý và trả kết quả ngay, không hỏi thêm.')));
-    box.append(qa);
-  }
-  panel.append(box);
-  syncApiButtons();
-}
-async function runTemplateApi(clarifications, refreshPrompt, modelValue, allowAsk, group) {
-  if (ui.apiJobId) return;
-  const fields = modelRequestFields(modelValue || '');
-  if (!fields) { setApiStatus('Chọn model AI (lưu API key hoặc tải model local trong ⚙️ Cài đặt trước).', true); return; }
-  await refreshPrompt();
-  const prompt = dialog.querySelector('.template-prompts textarea[readonly]')?.value || '';
-  if (!prompt.trim()) { setApiStatus('Chưa tạo được prompt (kiểm tra slot đã chọn cho P2/P3).', true); return; }
-  ui.apiQuestions = null;
-  try {
-    const start = await api('/api/generate/jobs', { method: 'POST', body: JSON.stringify({ ...fields, raw_prompt: prompt, allow_questions: allowAsk, clarifications }) });
-    ui.apiJobId = start.job_id; syncApiButtons();
-    setApiStatus('Đang gửi prompt tới AI...');
-    let job;
-    for (;;) {
-      await new Promise(r => setTimeout(r, 800));
-      if (ui.apiJobId !== start.job_id) return; // da huy
-      job = (await api(`/api/generate/jobs/${start.job_id}`)).job;
-      if (job.state === 'done') break;
-      setApiStatus(`⏳ ${job.message || 'Đang chờ AI...'} (${Math.round(job.elapsed_ms / 1000)} giây)`);
-    }
-    ui.apiJobId = null; syncApiButtons();
-    const data = job.result || {};
-    if (data.cancelled) { setApiStatus('Đã hủy yêu cầu.'); return; }
-    if (!data.success) throw new Error(data.error || 'AI không trả kết quả');
-    if (data.needs_input) {
-      ui.apiQuestions = { text: data.questions, clarifications };
-      setApiStatus('🤖 AI hỏi lại — trả lời bên dưới.');
-      renderEditor();
-      return;
-    }
-    ui.apiRawText = data.raw_text;
-    const pasted = dialog.querySelector('.template-pasted');
-    if (pasted) pasted.value = data.raw_text;
-    setApiStatus(`✅ AI đã trả kết quả (${Math.round(job.elapsed_ms / 1000)} giây) cho nhóm ${groups[group] || group}. Đã tự dán và kiểm tra bên dưới — xem thay đổi rồi bấm "Áp dụng bản nháp".`);
-    await ui.checkPasted?.();
-  } catch (err) {
-    ui.apiJobId = null; syncApiButtons();
-    setApiStatus(`Lỗi gửi qua AI API: ${err.message}`, true);
-  }
-}
-
 function renderPromptPanel(root) {
   const panel = node('section', null, 'template-prompts');
   panel.append(node('h4', 'Prompt cho AI ngoài'));
@@ -883,7 +724,6 @@ function renderPromptPanel(root) {
       catch (err) { toast(`Không copy được: ${err.message}`, true); }
     }), preview);
   const pasted = node('textarea', null, 'template-pasted'); pasted.rows = 8; pasted.placeholder = 'Dán văn bản AI trả về';
-  pasted.value = ui.apiRawText || '';
   async function checkPasted() {
     try {
       if (group.querySelector('select').value === 'REVIEW_REPAIR' && action.querySelector('select').value === 'validate-only') {
@@ -902,8 +742,7 @@ function renderPromptPanel(root) {
       status('Đã kiểm tra. Chỉ áp dụng khi bản nháp hợp lệ và được xác nhận.');
     } catch (err) { status(err.message, true); }
   }
-  ui.checkPasted = checkPasted;
-  renderTemplateApiBox(panel, refreshPrompt, () => group.querySelector('select').value);
+  panel.append(node('p', 'Muốn AI sinh đề tự động qua API theo mẫu này: đóng hộp thoại, mở tab "Sinh đề tự động" và chọn mẫu ở ô "Khung đề".', 'hint'));
   panel.append(node('h4', 'Dán kết quả AI'), pasted, button('Kiểm tra và xem thay đổi', checkPasted), button('Áp dụng bản nháp', () => {
     if (!ui.draft?.valid) { status('Bản nháp chưa hợp lệ, chưa thể áp dụng.', true); return; }
     if (!confirm(`Áp dụng ${ui.draft.assignments.length} câu đã xem?`)) return;

@@ -4,6 +4,7 @@ const {
   mergeLibraries,
   purgeOldTombstones,
   parseLibrary,
+  parseLibraryStrict,
   sanitizeTheme,
   pickNewerTheme,
   emptyLibrary,
@@ -208,5 +209,84 @@ describe('theme - "lan doi gan nhat thang"', () => {
   test('purgeOldTombstones giu theme', () => {
     const out = purgeOldTombstones(withTheme({ id: 'rose', updated_at: T1 }), 90);
     expect(out.theme).toEqual({ id: 'rose', updated_at: T1 });
+  });
+});
+
+describe('mergeLibraries - Last-Write-Wins (khong con "primary thang tuyet doi")', () => {
+  const T1 = '2026-01-01T00:00:00Z';
+  const T2 = '2026-01-02T00:00:00Z';
+
+  test('ban cu o primary KHONG ghi de ban moi hon o secondary (push bang may cu)', () => {
+    const out = mergeLibraries(lib([exam('a', { title: 'cu', updated_at: T1 })]), lib([exam('a', { title: 'moi', updated_at: T2 })]));
+    expect(out.exams[0].title).toBe('moi');
+  });
+
+  test('tombstone moi hon thang ban song cu hon, ca 2 huong', () => {
+    const dead = exam('a', { updated_at: T2, deleted_at: T2 });
+    const live = exam('a', { title: 'song', updated_at: T1 });
+    expect(mergeLibraries(lib([live]), lib([dead])).exams[0].deleted_at).toBe('2026-01-02T00:00:00.000Z');
+    expect(mergeLibraries(lib([dead]), lib([live])).exams[0].deleted_at).toBe('2026-01-02T00:00:00.000Z');
+  });
+
+  test('ban sua moi hon thang tombstone cu hon (khoi phuc)', () => {
+    const out = mergeLibraries(lib([exam('a', { updated_at: T1, deleted_at: T1 })]), lib([exam('a', { title: 'sua lai', updated_at: T2 })]));
+    expect(out.exams[0].deleted_at).toBeNull();
+    expect(out.exams[0].title).toBe('sua lai');
+  });
+
+  test('bang moc thoi gian -> primary thang (tat dinh)', () => {
+    const out = mergeLibraries(lib([exam('a', { title: 'P' })]), lib([exam('a', { title: 'S' })]));
+    expect(out.exams[0].title).toBe('P');
+  });
+
+  test('so sanh theo thoi diem: +07:00 va dinh dang SQLite (UTC)', () => {
+    // 16:01+07:00 = 09:01Z > 09:00Z
+    const out = mergeLibraries(lib([exam('a', { title: 'sqlite', updated_at: '2026-01-01 09:00:00' })]), lib([exam('a', { title: 'offset', updated_at: '2026-01-01T16:01:00+07:00' })]));
+    expect(out.exams[0].title).toBe('offset');
+  });
+
+  test('updated_at rac -> coi nhu cu nhat, khong nem', () => {
+    const out = mergeLibraries(lib([exam('a', { title: 'rac', updated_at: 'not-a-date', created_at: 'x' })]), lib([exam('a', { title: 'that', updated_at: T1 })]));
+    expect(out.exams[0].title).toBe('that');
+    expect(out.exams[0].updated_at).toBe('2026-01-01T00:00:00.000Z');
+  });
+
+  test('missing and invalid timestamps cannot become a fresh LWW winner', () => {
+    const malformed = parseLibrary(lib([exam('a', { title: 'bad', updated_at: 'invalid', created_at: 'also-invalid' })]));
+    expect(malformed.exams[0].updated_at).toBe('1970-01-01T00:00:00.000Z');
+    const out = mergeLibraries(malformed, lib([exam('a', { title: 'real', updated_at: T1 })]));
+    expect(out.exams[0].title).toBe('real');
+  });
+
+  test('moc tuong lai > 24h bi kep ve hien tai (nam 9999 khong thang mai mai)', () => {
+    const lib9999 = parseLibrary(lib([exam('a', { updated_at: '9999-12-31T23:59:59Z' })]));
+    expect(Date.parse(lib9999.exams[0].updated_at)).toBeLessThanOrEqual(Date.now() + 86400000);
+  });
+
+  test('trung exam_id trong 1 thu vien -> giu ban moi nhat', () => {
+    const out = parseLibrary(lib([exam('a', { title: 'moi', updated_at: T2 }), exam('a', { title: 'cu', updated_at: T1 })]));
+    expect(out.exams).toHaveLength(1);
+    expect(out.exams[0].title).toBe('moi');
+  });
+});
+
+describe('parseLibraryStrict - noi dung Gist hong phai DUNG dong bo', () => {
+  test.each([null, undefined, '', '   '])('vang mat (%p) -> thu vien rong', input => {
+    expect(parseLibraryStrict(input).exams).toEqual([]);
+  });
+
+  test.each(['{ hong', '[]', '"chuoi"', '{"exams": {}}', '{"khong_co_exams": 1}', 'null'])('hong (%p) -> nem loi', input => {
+    expect(() => parseLibraryStrict(input)).toThrow(/bi hong/);
+  });
+
+  test('hop le -> giong parseLibrary', () => {
+    const out = parseLibraryStrict(JSON.stringify(lib([exam('a')])));
+    expect(out.exams.map(e => e.exam_id)).toEqual(['a']);
+  });
+
+  test('co muc de hong -> dung dong bo thay vi ghi de Gist', () => {
+    for (const exams of [[null], [{ title: 'thieu id' }], [exam('a'), null]]) {
+      expect(() => parseLibraryStrict(JSON.stringify(lib(exams)))).toThrow(/muc de bi hong/);
+    }
   });
 });

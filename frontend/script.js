@@ -4,6 +4,9 @@ import { formatMathSymbols, latexToPlainText } from '/parser/mathFormat.js';
 import { generateExamCodes, shuffleAllMCQOptions } from '/parser/examCodeGenerator.js';
 import { redactExamForStudent } from '/parser/examRedaction.js';
 import { AI_PROMPT_VARIANTS } from './promptVariants.js';
+import { createAutoPull } from './autoPull.js';
+import { createArchiveOutbox } from './archiveOutbox.js';
+import { VARIANT_BY_PROVIDER, describeTemplate, templateToBlocks, templateBinding, fillTemplateFromBlocks, templateExportInput } from './examFrames.js';
 
 // Ve noi dung toan hoc: MOI cau truc 2 chieu (can, phan so, can bac n, he
 // phuong trinh, tich phan...) deu duoc quy ve $...$ / $$...$$ LaTeX roi giao
@@ -807,12 +810,16 @@ function renderQuestionCard(q, bi, qi, ctx, displayNo) {
   contentWrap.appendChild(numberSpan);
 
   const contentEditable = document.createElement('span');
+  // question-text: white-space pre-line -> cac y a) b) c) moi y mot dong.
+  // Doc lai bang innerText (khong phai textContent) de giu xuong dong khi
+  // giao vien bam Enter trong o sua (trinh duyet chen <br>/<div>).
+  contentEditable.className = 'question-text';
   renderMathInline(contentEditable, q.content);
   contentEditable.contentEditable = String(!state.isStudentMode);
   contentEditable.addEventListener('focus', () => { contentEditable.textContent = q.content; });
-  contentEditable.addEventListener('input', () => { q.content = contentEditable.textContent; });
+  contentEditable.addEventListener('input', () => { q.content = contentEditable.innerText; });
   contentEditable.addEventListener('blur', () => {
-    q.content = formatMathSymbols(contentEditable.textContent);
+    q.content = formatMathSymbols(contentEditable.innerText);
     renderMathInline(contentEditable, q.content);
   });
   contentWrap.appendChild(contentEditable);
@@ -859,10 +866,10 @@ function renderQuestionCard(q, bi, qi, ctx, displayNo) {
     });
     expl.addEventListener('blur', () => {
       if (!expl.textContent.trim()) { q.explanation = ''; expl.textContent = expl.dataset.placeholder; return; }
-      q.explanation = formatMathSymbols(expl.textContent);
+      q.explanation = formatMathSymbols(expl.innerText);
       renderExplanationInline(expl, q.explanation);
     });
-    expl.addEventListener('input', () => { q.explanation = expl.textContent === expl.dataset.placeholder ? '' : expl.textContent; });
+    expl.addEventListener('input', () => { q.explanation = expl.textContent === expl.dataset.placeholder ? '' : expl.innerText; });
     card.appendChild(expl);
   }
 
@@ -874,7 +881,8 @@ function renderQuestionCard(q, bi, qi, ctx, displayNo) {
 // khong bi coi la het cau; so thap phan "3.14" / dau nhan ngam "α.cos" khong
 // co khoang trang sau nen cung khong bi cat.
 const EXPL_MATH_MASK = /\$\$[^$]+\$\$|\$[^$]*\$/g;
-const EXPL_SENTENCE_SPLIT = /(?<=\.)\s+(?=\S)/;
+// Tach loi giai: sau dau cham cau, va tai moi xuong dong co san (y a) b) c)).
+const EXPL_SENTENCE_SPLIT = /(?<=\.)[ \t]+(?=\S)|\s*\n\s*/;
 function renderExplanationInline(container, text) {
   container.innerHTML = '';
   if (typeof text !== 'string' || !text.trim()) return;
@@ -1216,6 +1224,13 @@ document.getElementById('exportPdfBtn').addEventListener('click', () => {
 });
 
 // ---------- Export Word (.docx) ----------
+// TextRun cua docx bo qua ky tu "\n": tach thanh nhieu run, run sau co
+// break: 1 (ngat dong trong cung doan) de cac y a) b) c) xuong dong that.
+function textRunsWithBreaks(text, options = {}) {
+  const { TextRun } = docx;
+  return String(text ?? '').split(/\r?\n/).map((line, i) => new TextRun({ ...options, text: line, break: i > 0 ? 1 : undefined }));
+}
+
 function buildWordChildren(meta, blocks) {
   const { Paragraph, TextRun, HeadingLevel, AlignmentType } = docx;
   const children = [];
@@ -1246,7 +1261,7 @@ function buildWordChildren(meta, blocks) {
       // tren man hinh - phai lam phang LaTeX ($...$) sang Unicode truoc khi
       // dua vao TextRun, tranh hien thi tho nguyen "$\sqrt{16}$" trong file.
       children.push(new Paragraph({
-        children: [new TextRun({ text: `Câu ${questionNo}${questionPointsLabel(q)}: `, bold: true }), new TextRun(latexToPlainText(q.content))]
+        children: [new TextRun({ text: `Câu ${questionNo}${questionPointsLabel(q)}: `, bold: true }), ...textRunsWithBreaks(latexToPlainText(q.content))]
       }));
 
       if (q.question_type === 'MCQ') {
@@ -1281,7 +1296,7 @@ function buildWordChildren(meta, blocks) {
 
       if (!state.isStudentMode && q.explanation) {
         // Moi cau lời giải mot dong rieng cho de doc (giong khu Xem truoc).
-        const explSentences = latexToPlainText(q.explanation).split(/(?<=\.)\s+(?=\S)/).map(s => s.trim()).filter(Boolean);
+        const explSentences = latexToPlainText(q.explanation).split(EXPL_SENTENCE_SPLIT).map(s => s.trim()).filter(Boolean);
         explSentences.forEach((sen, si) => {
           children.push(new Paragraph({
             children: [new TextRun({ text: `${si === 0 ? 'Giải thích: ' : '   '}${sen}`, italics: true, color: '92400E' })]
@@ -1315,8 +1330,56 @@ async function exportToWord() {
   const filename = `${(state.title || 'de-kiem-tra').replace(/\s+/g, '_')}.docx`;
   downloadBlob(blob, filename);
 }
+// De tao tu mau (co template_binding, khong tron ma de, con du cau cua mau) ->
+// hoi ban in roi xuat DOCX theo bo cuc mau; con lai xuat kieu thuong nhu cu.
+const wordExportDialog = document.getElementById('wordExportDialog');
+function templateExportCandidate() {
+  const snapshot = state.template_binding?.template_snapshot;
+  if (!snapshot || state.examVersions.length) return null;
+  return fillTemplateFromBlocks(snapshot, state.blocks);
+}
+async function exportTemplateWord(filled, mode) {
+  const input = templateExportInput(filled, mode, { exam_title: state.title, subject: state.subject,
+    duration_minutes: state.duration_minutes, school: state.school_header });
+  const response = await fetch('/api/template-export/docx', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input) });
+  if (!response.ok) throw new Error((await response.json().catch(() => ({}))).error || 'Xuất DOCX thất bại');
+  const suffix = { student: 'hoc-sinh', teacher: 'giao-vien', answer_key: 'dap-an', combined: 'de-va-dap-an' }[mode] || mode;
+  downloadBlob(await response.blob(), `${(state.title || 'de-kiem-tra').replace(/\s+/g, '_')}_${suffix}.docx`);
+  if (response.headers.get('X-Pagination-Overflow') === 'true') showCopyToast(`⚠️ Ước lượng ${response.headers.get('X-Estimated-Pages')} trang, vượt giới hạn trang của mẫu. Kiểm tra lại trong Word.`, 6000);
+}
 document.getElementById('exportWordBtn').addEventListener('click', () => {
+  const candidate = templateExportCandidate();
+  if (!candidate) {
+    exportToWord().catch(err => showError('Lỗi xuất Word: ' + err.message));
+    return;
+  }
+  const name = state.template_binding.template_snapshot.display_name;
+  document.getElementById('wordExportInfo').textContent = candidate.ok
+    ? `Đề này tạo từ mẫu "${name}". Chọn bản in để xuất Word đúng bố cục mẫu (điểm, vùng trả lời, khổ giấy, số cột).`
+    : `Đề này tạo từ mẫu "${name}" nhưng đã thêm/bớt câu so với mẫu, nên không xuất theo mẫu được. Hãy dùng "Xuất kiểu thường".`;
+  document.getElementById('wordExportTemplateBtn').disabled = !candidate.ok;
+  document.getElementById('wordExportMode').value = state.isStudentMode ? 'student' : 'teacher';
+  document.getElementById('wordExportError').textContent = '';
+  wordExportDialog.showModal();
+});
+document.getElementById('wordExportCancelBtn').addEventListener('click', () => wordExportDialog.close());
+document.getElementById('wordExportPlainBtn').addEventListener('click', () => {
+  wordExportDialog.close();
   exportToWord().catch(err => showError('Lỗi xuất Word: ' + err.message));
+});
+document.getElementById('wordExportTemplateBtn').addEventListener('click', async () => {
+  const candidate = templateExportCandidate();
+  if (!candidate?.ok) return;
+  const btn = document.getElementById('wordExportTemplateBtn');
+  btn.disabled = true;
+  try {
+    await exportTemplateWord(candidate.template, document.getElementById('wordExportMode').value);
+    wordExportDialog.close();
+  } catch (err) {
+    document.getElementById('wordExportError').textContent = 'Lỗi xuất Word theo mẫu: ' + err.message;
+  } finally {
+    btn.disabled = false;
+  }
 });
 
 // ---------- Share link ----------
@@ -1767,12 +1830,37 @@ async function loadResourceHistory() {
 }
 const RESOURCE_TOAST_MS = 5000;
 
+// Thu vien tai lieu mo trong dialog rieng (chong len bang sinh de) nen thong bao
+// hien ngay trong dialog - #errorMessage/#copyToast cua trang chinh bi che.
+const resourceManagerDialog = document.getElementById('resourceManagerDialog');
+function resourceNotice(msg, isError = false) {
+  const el = document.getElementById('resourceManagerStatus');
+  el.textContent = msg;
+  el.classList.toggle('error', isError);
+  if (!isError) showCopyToast(msg, RESOURCE_TOAST_MS);
+}
+document.getElementById('openResourceManagerBtn').addEventListener('click', () => {
+  document.getElementById('resourceManagerStatus').textContent = '';
+  if (!resourceManagerDialog.open) resourceManagerDialog.showModal();
+});
+document.getElementById('resourceManagerCloseBtn').addEventListener('click', () => resourceManagerDialog.close());
+
+function updateSectionSummary() {
+  const boxes = [...document.querySelectorAll('#autoSectionCheckboxes input[type="checkbox"]')];
+  const checked = boxes.filter(b => b.checked).length;
+  document.getElementById('autoSectionSummary').textContent = !checked || checked === boxes.length
+    ? `Phần tài liệu AI đọc: tất cả (${boxes.length} phần)`
+    : `Phần tài liệu AI đọc: ${checked}/${boxes.length} phần`;
+}
+
 function renderSectionCheckboxes() {
   const wrap = document.getElementById('autoSectionCheckboxes');
+  const details = document.getElementById('autoSectionDetails');
   const docId = document.getElementById('autoDocSelect').value;
   const doc = cachedResources.find(d => d.doc_id === docId);
   if (!doc || !doc.sections.length) {
     wrap.innerHTML = '';
+    details.hidden = true;
     return;
   }
   wrap.innerHTML = doc.sections.map(s => `
@@ -1781,7 +1869,10 @@ function renderSectionCheckboxes() {
       ${escapeHtml(s.section_title)}
     </label>
   `).join('');
+  details.hidden = false;
+  updateSectionSummary();
 }
+document.getElementById('autoSectionCheckboxes').addEventListener('change', updateSectionSummary);
 
 function renderDocSelect() {
   const select = document.getElementById('autoDocSelect');
@@ -1796,7 +1887,7 @@ document.getElementById('autoDocSelect').addEventListener('change', renderSectio
 document.getElementById('addDocBtn').addEventListener('click', async () => {
   const title = document.getElementById('newDocTitle').value.trim();
   const subject = document.getElementById('newDocSubject').value.trim();
-  if (!title) { showError('Vui lòng nhập tên tài liệu.'); return; }
+  if (!title) { resourceNotice('Vui lòng nhập tên tài liệu.', true); return; }
   try {
     const res = await fetch('/api/resources', {
       method: 'POST',
@@ -1807,10 +1898,10 @@ document.getElementById('addDocBtn').addEventListener('click', async () => {
     if (!data.success) throw new Error(data.error);
     document.getElementById('newDocTitle').value = '';
     document.getElementById('newDocSubject').value = '';
-    showCopyToast(`✅ Đã thêm tài liệu "${title}" thành công.`, RESOURCE_TOAST_MS);
+    resourceNotice(`✅ Đã thêm tài liệu "${title}" thành công.`);
     loadResources();
   } catch (err) {
-    showError('Lỗi tạo tài liệu: ' + err.message);
+    resourceNotice('Lỗi tạo tài liệu: ' + err.message, true);
   }
 });
 
@@ -1848,7 +1939,7 @@ function renderDocListForSections() {
     addSectionBtn.addEventListener('click', async () => {
       const section_title = sectionTitleInput.value.trim();
       const content = sectionContentInput.value.trim();
-      if (!section_title || !content) { showError('Vui lòng nhập tên phần và nội dung.'); return; }
+      if (!section_title || !content) { resourceNotice('Vui lòng nhập tên phần và nội dung.', true); return; }
       try {
         const res = await fetch(`/api/resources/${doc.doc_id}/sections`, {
           method: 'POST',
@@ -1857,10 +1948,10 @@ function renderDocListForSections() {
         });
         const data = await res.json();
         if (!data.success) throw new Error(data.error);
-        showCopyToast(`✅ Đã thêm phần "${section_title}" vào tài liệu "${doc.title}" thành công.`, RESOURCE_TOAST_MS);
+        resourceNotice(`✅ Đã thêm phần "${section_title}" vào tài liệu "${doc.title}" thành công.`);
         loadResources();
       } catch (err) {
-        showError('Lỗi thêm phần: ' + err.message);
+        resourceNotice('Lỗi thêm phần: ' + err.message, true);
       }
     });
 
@@ -1874,7 +1965,7 @@ function renderDocListForSections() {
     uploadSectionBtn.textContent = '📤 Tải file lên';
     uploadSectionBtn.addEventListener('click', async () => {
       const file = sectionFileInput.files[0];
-      if (!file) { showError('Vui lòng chọn file (.txt, .docx, .pdf) trước.'); return; }
+      if (!file) { resourceNotice('Vui lòng chọn file (.txt, .docx, .pdf) trước.', true); return; }
       const formData = new FormData();
       formData.append('file', file);
       const section_title = sectionTitleInput.value.trim();
@@ -1884,10 +1975,10 @@ function renderDocListForSections() {
         const data = await res.json();
         if (!data.success) throw new Error(data.error);
         sectionFileInput.value = '';
-        showCopyToast(`✅ Đã tải "${file.name}" vào tài liệu "${doc.title}" thành công.`, RESOURCE_TOAST_MS);
+        resourceNotice(`✅ Đã tải "${file.name}" vào tài liệu "${doc.title}" thành công.`);
         loadResources();
       } catch (err) {
-        showError('Lỗi tải file: ' + err.message);
+        resourceNotice('Lỗi tải file: ' + err.message, true);
       }
     });
 
@@ -1901,10 +1992,10 @@ function renderDocListForSections() {
         const res = await fetch(`/api/resources/${doc.doc_id}`, { method: 'DELETE' });
         const data = await res.json();
         if (!data.success) throw new Error(data.error);
-        showCopyToast(`🗑️ Đã xóa tài liệu "${doc.title}".`, RESOURCE_TOAST_MS);
+        resourceNotice(`🗑️ Đã xóa tài liệu "${doc.title}".`);
         loadResources();
       } catch (err) {
-        showError('Lỗi xóa tài liệu: ' + err.message);
+        resourceNotice('Lỗi xóa tài liệu: ' + err.message, true);
       }
     });
 
@@ -1930,13 +2021,49 @@ function collectQuestionSpec() {
   return spec;
 }
 
-// Tieu de bang thu gon cho biet bang dang trong hay dang quyet cau truc de.
+// The tom tat cau truc de se sinh: theo mau (neu chon Khung de), theo bang so
+// cau (neu co dien), hoac theo yeu cau viet tay. Bang chi tiet an khi dung mau.
 function updateSpecSummary() {
+  const chip = document.getElementById('autoStructureChip');
+  const frame = selectedFrame();
+  document.getElementById('autoSpecDetails').hidden = Boolean(frame);
+  if (frame) { chip.textContent = `📐 Theo mẫu "${frame.display_name}": ${describeTemplate(frame)}`; return; }
   const total = collectQuestionSpec().reduce((n, s) => n + s.so_luong, 0);
-  document.getElementById('autoSpecSummary').textContent = total
-    ? `Bảng số câu theo loại × mức độ — đang đặt ${total} câu (ưu tiên hơn yêu cầu viết tay)`
-    : 'Bảng số câu theo loại × mức độ (tùy chọn — đang để trống)';
+  chip.textContent = total
+    ? `📊 Theo bảng: ${total} câu (ưu tiên hơn yêu cầu viết tay)`
+    : '📝 Số câu: theo yêu cầu viết tay (không ghi thì AI dùng số câu mặc định)';
 }
+
+// ---------- Khung de (mau) cho sinh de qua API ----------
+// Chon mau -> gui prompt P1 cua mau (co Ma_Khung/Diem) qua job raw_prompt, roi
+// /api/template-prompts/prepare ghep ket qua vao dung slot. Cau truc lay tu mau.
+let cachedFrames = [];
+function selectedFrame() {
+  const id = document.getElementById('autoFrameSelect').value;
+  return id ? cachedFrames.find(t => t.template_id === id) || null : null;
+}
+function renderFrameSelect() {
+  const select = document.getElementById('autoFrameSelect');
+  const prev = select.value;
+  const option = t => `<option value="${escapeHtml(t.template_id)}">${escapeHtml(t.display_name)} (${escapeHtml(describeTemplate(t))})</option>`;
+  const builtin = cachedFrames.filter(t => t.is_builtin);
+  const mine = cachedFrames.filter(t => !t.is_builtin);
+  select.innerHTML = '<option value="">Đề tự do (AI tự chia câu)</option>' +
+    (builtin.length ? `<optgroup label="Mẫu gốc">${builtin.map(option).join('')}</optgroup>` : '') +
+    (mine.length ? `<optgroup label="Mẫu của tôi">${mine.map(option).join('')}</optgroup>` : '');
+  if (cachedFrames.some(t => t.template_id === prev)) select.value = prev;
+  updateSpecSummary();
+}
+async function loadFrames() {
+  try {
+    const data = await (await fetch('/api/templates')).json();
+    if (data.success) cachedFrames = data.templates;
+  } catch {
+    // Giu danh sach cu; khong chan sinh de tu do.
+  }
+  renderFrameSelect();
+}
+document.getElementById('autoFrameSelect').addEventListener('change', updateSpecSummary);
 document.querySelectorAll('#autoSpecTable input[type="number"]').forEach(input => input.addEventListener('input', updateSpecSummary));
 
 // Mui ten trai/phai chuyen o (theo hang, het hang thi sang hang ke); len/xuong
@@ -1966,7 +2093,7 @@ const autoGenErrorEl = document.getElementById('autoGenError');
 const autoGenResultEl = document.getElementById('autoGenResult');
 let autoGenRunning = false;
 let autoGenPending = null; // { requestBody, clarifications, questions } khi AI dang hoi
-function openAutoGenBoard() { if (!autoGenDialog.open) autoGenDialog.showModal(); }
+function openAutoGenBoard() { if (!autoGenDialog.open) { autoGenDialog.showModal(); loadFrames(); } }
 document.getElementById('openAutoGenBtn').addEventListener('click', openAutoGenBoard);
 document.querySelector('.tab-btn[data-tab="auto"]').addEventListener('click', openAutoGenBoard);
 document.getElementById('autoGenCloseBtn').addEventListener('click', () => autoGenDialog.close());
@@ -2001,9 +2128,11 @@ function renderAutoGenProgress(job) {
   });
 }
 
-function buildAutoGenRequest() {
+async function buildAutoGenRequest() {
   const selectedValue = document.getElementById('autoModelSelect').value;
   if (!selectedValue) { autoGenError('Vui lòng chọn 1 model (lưu API key hoặc tải model local trong Cài đặt trước).'); return null; }
+  const frame = selectedFrame();
+  if (frame) return buildFrameRequest(selectedValue, frame);
   const questionSpec = collectQuestionSpec();
   const sectionIds = Array.from(document.querySelectorAll('#autoSectionCheckboxes input:checked')).map(i => i.value);
   const topic = document.getElementById('autoTopicInput').value.trim();
@@ -2016,19 +2145,63 @@ function buildAutoGenRequest() {
       'Bấm OK để sinh theo bảng, hoặc Hủy rồi đưa bảng về 0 nếu muốn làm theo yêu cầu viết tay.'
     ].join('\n\n'))) return null;
   }
-  // "local:<model_id>" / "legacy:<model_id>" -> gui model_id (LLM_MODEL).
-  // "cloud:<provider>:<model_name>" -> gui thang provider/model_name, khong can dang ky.
   const requestBody = { section_ids: sectionIds, doc_id: document.getElementById('autoDocSelect').value || null, topic, question_spec: questionSpec, extra_instructions: extraInstructions,
     allow_questions: document.getElementById('autoAllowQuestions').checked };
+  return { ...requestBody, ...modelFields(selectedValue) };
+}
+
+// "local:<model_id>" / "legacy:<model_id>" -> model_id (LLM_MODEL);
+// "cloud:<provider>:<model_name>" -> provider/model_name, khong can dang ky.
+function modelFields(selectedValue) {
   if (selectedValue.startsWith('cloud:')) {
     const rest = selectedValue.slice('cloud:'.length);
     const sep = rest.indexOf(':');
-    requestBody.provider = rest.slice(0, sep);
-    requestBody.model_name = rest.slice(sep + 1);
-  } else if (selectedValue.startsWith('local:') || selectedValue.startsWith('legacy:')) {
-    requestBody.model_id = selectedValue.slice(selectedValue.indexOf(':') + 1);
+    return { provider: rest.slice(0, sep), model_name: rest.slice(sep + 1) };
   }
-  return requestBody;
+  if (selectedValue.startsWith('local:') || selectedValue.startsWith('legacy:')) {
+    return { model_id: selectedValue.slice(selectedValue.indexOf(':') + 1) };
+  }
+  return {};
+}
+
+async function buildFrameRequest(selectedValue, frame) {
+  const fields = modelFields(selectedValue);
+  const modelRow = fields.model_id ? cachedModels.find(m => m.model_id === fields.model_id) : null;
+  const aiVariant = VARIANT_BY_PROVIDER[fields.provider || modelRow?.provider] || 'ChatGPT';
+  const topic = document.getElementById('autoTopicInput').value.trim();
+  const extraInstructions = document.getElementById('autoExtraPromptInput').value.trim();
+  const subject = document.getElementById('examSubjectInput').value.trim();
+  let built;
+  try {
+    const res = await fetch('/api/template-prompts/build', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ template: frame, promptGroup: 'FULL_EXAM', aiVariant, topic,
+        examMetadata: subject ? { subject } : {}, teacherExtraInstructions: extraInstructions }) });
+    built = await res.json();
+    if (!built.success) throw new Error(built.error);
+  } catch (err) {
+    autoGenError('Không tạo được prompt theo mẫu: ' + err.message);
+    return null;
+  }
+  const sectionIds = Array.from(document.querySelectorAll('#autoSectionCheckboxes input:checked')).map(i => i.value);
+  // frame chi dung o trinh duyet (bo ra truoc khi gui server).
+  return { ...fields, raw_prompt: built.prompt, topic, extra_instructions: extraInstructions,
+    section_ids: sectionIds, doc_id: document.getElementById('autoDocSelect').value || null,
+    allow_questions: document.getElementById('autoAllowQuestions').checked, frame };
+}
+
+// Ket qua AI (van ban) -> kiem tra/ghep vao slot cua mau -> blocks xem truoc.
+async function frameResultToPreview(frame, rawText) {
+  const res = await fetch('/api/template-prompts/prepare', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ template: frame, rawText, promptGroup: 'FULL_EXAM' }) });
+  const data = await res.json();
+  if (!data.success) throw new Error(data.error);
+  const draft = data.draft;
+  if (!draft.assignments.length) {
+    throw new Error(`AI trả sai cú pháp của mẫu, không ghép được câu nào. ${draft.issues.slice(0, 3).map(x => x.human_readable_message).join(' ')}`);
+  }
+  const bySlot = new Map(draft.assignments.map(a => [a.slot_id, a.after]));
+  const blocks = templateToBlocks(frame, slot => bySlot.get(slot.slot_id) || null);
+  return { blocks, notes: draft.issues.map(x => x.human_readable_message) };
 }
 
 // Ten de moi: lay o "Ten de" trong bang; trong thi "De kiem tra – <chu de>". Tranh
@@ -2108,7 +2281,9 @@ function showAutoGenPreview(data, requestBody) {
   const count = autoGenPreviewBlocks.reduce((n, blk) => n + blk.questions.length, 0);
   const title = previewTitle(requestBody.topic);
   document.getElementById('autoGenPreviewTitle').textContent = `Xem trước: ${title} (${count} câu)`;
-  const warn = data.spec_warnings?.length ? ` ⚠️ AI chưa khớp bảng: ${data.spec_warnings.join('; ')}.` : '';
+  const warn = (data.spec_warnings?.length ? ` ⚠️ AI chưa khớp bảng: ${data.spec_warnings.join('; ')}.` : '')
+    + (data.frame_notes?.length ? ` ⚠️ Lưu ý khi ghép vào mẫu (${data.frame_notes.length}): ${data.frame_notes.slice(0, 4).join(' ')}${data.frame_notes.length > 4 ? ' …' : ''}` : '')
+    + (requestBody.frame ? ` 📐 Mẫu: ${requestBody.frame.display_name}.` : '');
   document.getElementById('autoGenPreviewInfo').textContent = `${describeContext(data.context_info)}${warn} Kiểm tra đề, ổn thì bấm "Lưu đề" để đưa vào trình soạn đề và Lịch sử.`;
   const paper = document.getElementById('autoGenPreviewPaper');
   const meta = { title, subject: document.getElementById('examSubjectInput').value.trim(), duration_minutes: parseInt(document.getElementById('examDurationInput').value, 10) || null, school_header: document.getElementById('examSchoolInput').value.trim() };
@@ -2132,7 +2307,8 @@ async function runAutoGenJob(requestBody) {
   renderAutoGenProgress({ stage: 'queued', message: 'Đang bắt đầu...', elapsed_ms: 0 });
   statusEl.textContent = '⏳ Đang sinh đề... (bảng sinh đề có thể đóng, đề vẫn tiếp tục sinh)';
   try {
-    const start = await fetch('/api/generate/jobs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(requestBody) });
+    const { frame, ...body } = requestBody;
+    const start = await fetch('/api/generate/jobs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     const startData = await start.json();
     if (!startData.success) throw new Error(startData.error || `HTTP ${start.status}`);
     autoGenJobId = startData.job_id;
@@ -2176,9 +2352,14 @@ async function runAutoGenJob(requestBody) {
       document.getElementById('autoGenAnswer').focus();
       return;
     }
+    let previewData = data;
+    if (frame) {
+      const { blocks, notes } = await frameResultToPreview(frame, data.raw_text || '');
+      previewData = { blocks, frame_notes: notes, context_info: data.context_info };
+    }
     renderAutoGenProgress({ ...job, stage: 'done', message: 'Đã sinh đề — xem trước bên dưới.' });
     setAutoGenControls('idle');
-    showAutoGenPreview(data, requestBody);
+    showAutoGenPreview(previewData, requestBody);
     openAutoGenBoard();
   } catch (err) {
     autoGenJobId = null;
@@ -2199,7 +2380,7 @@ async function runAutoGenJob(requestBody) {
 document.getElementById('autoGenerateBtn').addEventListener('click', async () => {
   if (autoGenRunning) return;
   if (autoGenPreviewBlocks && !await askAutoGen('Sinh đề mới?', 'Đề đang xem trước chưa được lưu sẽ bị bỏ. Bạn có muốn sinh đề mới không?', 'Sinh đề mới')) return;
-  const requestBody = buildAutoGenRequest();
+  const requestBody = await buildAutoGenRequest();
   if (!requestBody) return;
   autoGenPending = null;
   autoGenPreviewBlocks = null;
@@ -2228,7 +2409,18 @@ document.getElementById('autoGenSaveBtn').addEventListener('click', () => {
   if (!autoGenPreviewBlocks) return;
   const blocks = autoGenPreviewBlocks;
   applyAutoGenTitle(autoGenLastRequest?.topic);
-  applyGeneratedBlocks(blocks); // dua vao trinh soan de va luu ngay vao Lich su
+  const frame = autoGenLastRequest?.frame;
+  if (frame) {
+    if (!document.getElementById('examDurationInput').value && frame.defaults?.duration_minutes) {
+      document.getElementById('examDurationInput').value = frame.defaults.duration_minutes;
+    }
+    // De theo mau: giu thu tu A-D (muon xao thi bam nut Xao), gan mau de xuat Word theo mau.
+    applyGeneratedBlocks(blocks, { shuffle: false });
+    state.template_binding = templateBinding(frame);
+    scheduleArchiveSave({ immediate: true });
+  } else {
+    applyGeneratedBlocks(blocks); // dua vao trinh soan de va luu ngay vao Lich su
+  }
   const count = blocks.reduce((n, blk) => n + blk.questions.length, 0);
   const title = document.getElementById('examTitleInput').value;
   resetAutoGenBoard();
@@ -2265,6 +2457,7 @@ document.getElementById('autoGenDiscardBtn').addEventListener('click', async () 
 loadModels();
 loadLiveCloudModels();
 loadResources();
+loadFrames();
 
 // ---------- Load exam from share link on page load ----------
 function loadExamIntoState(exam) {
@@ -2320,6 +2513,32 @@ const ARCHIVE_SAVE_DEBOUNCE_MS = 1500;
 let archiveSaveTimer = null;
 let archiveSaveInFlight = false;
 let archiveSaveQueued = false;
+let archivePending = null;
+let archiveLocalRevision = 0;
+let storageWarningShown = false;
+const archiveOutbox = createArchiveOutbox({
+  // Access localStorage inside these methods: some browser modes throw on access.
+  storage: {
+    setItem: (...args) => localStorage.setItem(...args),
+    getItem: key => localStorage.getItem(key), removeItem: key => localStorage.removeItem(key),
+    key: i => localStorage.key(i), get length() { return localStorage.length; }
+  },
+  fetch: (...args) => fetch(...args), uuid: () => crypto.randomUUID(),
+  beacon: (...args) => navigator.sendBeacon?.(...args),
+  onStorageError: () => {
+    if (storageWarningShown) return;
+    storageWarningShown = true;
+    showCopyToast('Trình duyệt không lưu được bản nháp dự phòng. Hãy bấm Lưu đề trước khi đóng.', 7000);
+  }
+});
+
+function stageArchiveSave() {
+  archiveLocalRevision++;
+  // One stable ID even if a beacon races the first ordinary save.
+  if (!state.archiveId) state.archiveId = crypto.randomUUID();
+  archivePending = archiveOutbox.stage({ ...buildExamPayload(), exam_id: state.archiveId });
+  return archivePending;
+}
 
 // Khong tu luu khi dang xem de qua link chia se (che do nguoi nhan) hoac khi
 // chua co de nao.
@@ -2329,6 +2548,7 @@ function canAutosaveArchive() {
 
 function scheduleArchiveSave(opts = {}) {
   if (!canAutosaveArchive()) return;
+  stageArchiveSave();
   clearTimeout(archiveSaveTimer);
   if (opts.immediate) {
     archiveSaveTimer = null;
@@ -2343,18 +2563,11 @@ async function doArchiveSave() {
   if (archiveSaveInFlight) { archiveSaveQueued = true; return false; }
   archiveSaveInFlight = true;
   let saved = false;
+  const entry = archivePending || stageArchiveSave();
   try {
-    const payload = buildExamPayload();
-    if (state.archiveId) payload.exam_id = state.archiveId;
-    const res = await fetch('/api/archive', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
-    const data = await res.json();
-    if (data.success && data.exam_id) state.archiveId = data.exam_id;
-    saved = Boolean(data.success);
-    if (!saved) state.lastArchiveError = data.error || `HTTP ${res.status}`;
+    await archiveOutbox.save(entry);
+    if (archivePending === entry) archivePending = null;
+    saved = true;
   } catch (err) {
     // Luu kho la tinh nang nen - loi mang khong duoc chan luong soan de.
     state.lastArchiveError = err.message;
@@ -2373,6 +2586,7 @@ async function saveExamNow() {
   archiveSaveTimer = null;
   while (archiveSaveInFlight) await new Promise(r => setTimeout(r, 100));
   archiveSaveQueued = false;
+  stageArchiveSave();
   const ok = await doArchiveSave();
   showCopyToast(ok ? `💾 Đã lưu đề "${state.title || 'Đề kiểm tra'}" vào Lịch sử.` : `Không lưu được đề: ${state.lastArchiveError || 'lỗi không rõ'}`, 5000);
   return ok;
@@ -2391,21 +2605,26 @@ document.getElementById('bgApplyToExamBtn').addEventListener('click', async () =
 });
 
 function flushArchiveSaveOnUnload() {
-  // Chi gui khi con thay doi chua luu (dang cho debounce). Neu khong co timer
-  // treo thi lan luu gan nhat da bat het thay doi -> khong gui trung.
-  if (!archiveSaveTimer && !archiveSaveQueued) return;
   clearTimeout(archiveSaveTimer);
   archiveSaveTimer = null;
-  if (!canAutosaveArchive() || !navigator.sendBeacon) return;
-  const payload = buildExamPayload();
-  if (state.archiveId) payload.exam_id = state.archiveId;
-  try {
-    navigator.sendBeacon('/api/archive', new Blob([JSON.stringify(payload)], { type: 'application/json' }));
-  } catch {
-    // ignore
+  if (canAutosaveArchive() && archivePending && !archiveOutbox.flushOnHide(archivePending)) {
+    // Large exams use a normal save while the hidden page is still alive;
+    // the persistent draft covers termination before that request completes.
+    doArchiveSave();
   }
+  // Sending only a small signal leaves room for the final archive beacon.
+  // The server retries failed uploads even after this tab has gone away.
+  const body = JSON.stringify({ theme: { id: currentTheme(), updated_at: currentThemeAt() } });
+  try {
+    if (navigator.sendBeacon?.('/api/sync/auto-push', new Blob([body], { type: 'application/json' }))) return;
+  } catch { /* Try keepalive if the browser rejected the beacon. */ }
+  fetch('/api/sync/auto-push', { method: 'POST', keepalive: true,
+    headers: { 'Content-Type': 'application/json' }, body }).catch(() => {});
 }
-window.addEventListener('beforeunload', flushArchiveSaveOnUnload);
+window.addEventListener('pagehide', flushArchiveSaveOnUnload);
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') flushArchiveSaveOnUnload();
+});
 
 // Autosave khi sua truc tiep tren ban xem truoc: content/option/explanation/
 // dap an dien tu bubble qua 'input'; select Dung-Sai va so dong nhap qua 'change'.
@@ -2456,11 +2675,16 @@ document.getElementById('closeLibraryModalBtn').addEventListener('click', () => 
 });
 
 async function loadArchiveList() {
+  const archiveIdAtRequest = state.archiveId;
+  const localRevisionAtRequest = archiveLocalRevision;
+  const savePendingAtRequest = !!archivePending || archiveSaveInFlight;
   let exams = [];
+  let loaded = false;
   try {
     const res = await fetch('/api/archive');
     const data = await res.json();
     exams = data.success ? data.exams : [];
+    loaded = data.success && Array.isArray(data.exams);
   } catch {
     exams = [];
   }
@@ -2468,7 +2692,8 @@ async function loadArchiveList() {
   // De dang mo khong con trong danh sach (bi xoa cuc bo, hoac keo ve thanh
   // tombstone) -> bo lien ket archiveId de lan sua sau tao ban ghi moi thay vi
   // cap nhat ban ghi da xoa.
-  if (state.archiveId && !exams.some(e => e.exam_id === state.archiveId)) {
+  if (loaded && state.archiveId && state.archiveId === archiveIdAtRequest && !savePendingAtRequest &&
+      archiveLocalRevision === localRevisionAtRequest && !exams.some(e => e.exam_id === state.archiveId)) {
     state.archiveId = null;
   }
 
@@ -2554,9 +2779,8 @@ function loadArchivedExamIntoState(exam) {
 async function deleteArchivedExam(ex) {
   const ok = window.confirm(
     `Xóa đề "${ex.title || 'Đề chưa đặt tên'}"?\n\n` +
-    `• Đề chỉ bị xóa TRÊN MÁY NÀY.\n` +
-    `• Bấm "⬆️ Đẩy lên" sau đó để xóa vĩnh viễn trên cloud.\n` +
-    `• Nếu xóa nhầm (và chưa Đẩy lên), bấm "⬇️ Kéo về" để khôi phục.`
+    `Nếu bật tự đẩy và có token chủ kho, thay đổi này cũng được đưa lên Gist.\n` +
+    `Các thiết bị khác nhận thay đổi khi kéo kho đề về.`
   );
   if (!ok) return;
   try {
@@ -2584,9 +2808,18 @@ const changeGistPanel = document.getElementById('changeGistPanel');
 const createGistBtn = document.getElementById('createGistBtn');
 const syncPushBtn = document.getElementById('syncPushBtn');
 const syncPullBtn = document.getElementById('syncPullBtn');
+const autoPullOnOpenInput = document.getElementById('autoPullOnOpen');
+const autoPushOnCloseInput = document.getElementById('autoPushOnClose');
 
 let syncHasToken = false;
 let syncGistId = '';
+let syncDefaultGistId = '';
+let syncSharedOwner = '';
+let syncIsShared = false;
+let syncInFlight = false;
+let autoPullEnabled = true;
+try { autoPullEnabled = localStorage.getItem('exambuilder-auto-pull') !== 'false'; } catch { /* mac dinh bat */ }
+autoPullOnOpenInput.checked = autoPullEnabled;
 
 function setSyncStatus(msg, kind) {
   syncStatusEl.textContent = msg || '';
@@ -2598,12 +2831,18 @@ function renderSyncState() {
   const masked = tokenStateLabel.dataset.masked;
   tokenStateLabel.textContent = syncHasToken
     ? (masked ? `✅ Đã lưu (${masked})` : '✅ Đã lưu')
-    : '⚠️ Chưa có';
+    : (syncIsShared ? 'Không cần để kéo kho chung' : 'Chưa có — chỉ cần khi đẩy lên');
   tokenStateLabel.classList.toggle('is-set', syncHasToken);
   gistStateLabel.textContent = syncGistId ? `✅ ${syncGistId}` : '⚠️ Chưa có';
   gistStateLabel.classList.toggle('is-set', !!syncGistId);
   // "Tạo Gist ID mới" cần token trước.
-  createGistBtn.disabled = !syncHasToken;
+  createGistBtn.disabled = !syncHasToken || syncInFlight;
+  syncPushBtn.disabled = !syncHasToken || syncInFlight;
+  syncPullBtn.disabled = !syncGistId || syncInFlight;
+  syncPushBtn.textContent = syncIsShared ? '⬆️ Chủ kho đẩy lên' : '⬆️ Đẩy lên (Push)';
+  document.getElementById('syncDescription').textContent = syncIsShared
+    ? `Tự nhận kho đề chung, không cần token. Chỉ chủ kho ${syncSharedOwner} cần token để đẩy thay đổi lên.`
+    : 'Kho riêng: kéo về không cần token; đẩy lên cần token của chủ Gist.';
 }
 
 async function loadSyncSettings() {
@@ -2613,13 +2852,27 @@ async function loadSyncSettings() {
     if (!data.success) return;
     syncHasToken = !!data.has_token;
     syncGistId = data.gist_id || '';
+    syncDefaultGistId = data.default_gist_id || '';
+    syncSharedOwner = data.shared_gist_owner || '';
+    syncIsShared = !!data.is_shared;
+    autoPushOnCloseInput.checked = data.auto_push?.enabled !== false;
+    const auto = data.auto_push || {};
+    document.getElementById('autoPushStatus').textContent = !auto.enabled
+      ? 'Tự đẩy đang tắt. Bạn vẫn có thể đẩy thủ công.'
+      : !data.has_token ? 'Đang dùng chế độ đọc. Muốn tự đẩy, hãy lưu token của chủ kho.'
+      : auto.last_error ? `Chưa đẩy được: ${auto.last_error}. Đề vẫn được giữ trên máy.`
+      : auto.pending ? 'Có thay đổi đang chờ đẩy lên Gist.'
+      : auto.last_pushed_at ? `Đã tự lưu lên Gist: ${formatDateShort(auto.last_pushed_at)}`
+      : 'Tự đẩy khi đóng web; cũng lưu lên Gist sau khi sửa đề. Mất mạng sẽ thử lại.';
     if (data.has_token && data.masked_token) tokenStateLabel.dataset.masked = data.masked_token;
     renderSyncState();
     syncMetaEl.textContent = data.last_synced_at
       ? `Đồng bộ lần cuối: ${formatDateShort(data.last_synced_at)}`
       : 'Chưa đồng bộ lần nào.';
+    return data;
   } catch {
     // giu nguyen trang thai hien tai
+    return null;
   }
 }
 
@@ -2696,14 +2949,17 @@ createGistBtn.addEventListener('click', async () => {
   } catch (err) {
     setSyncStatus('❌ ' + err.message, 'error');
   } finally {
-    createGistBtn.disabled = false;
+    renderSyncState();
   }
 });
 
-async function runSync(direction) {
-  syncPushBtn.disabled = true;
-  syncPullBtn.disabled = true;
-  setSyncStatus(direction === 'pull' ? '⏳ Đang kéo về từ Gist...' : '⏳ Đang đẩy lên Gist...', '');
+async function runSync(direction, { automatic = false } = {}) {
+  if (syncInFlight) return false;
+  syncInFlight = true;
+  renderSyncState();
+  setSyncStatus(direction === 'pull'
+    ? (automatic ? '⏳ Đang tự động kéo kho đề về...' : '⏳ Đang kéo về từ Gist...')
+    : '⏳ Đang đẩy lên Gist...', '');
   try {
     const res = await fetch(`/api/sync/${direction}`, {
       method: 'POST',
@@ -2722,13 +2978,66 @@ async function runSync(direction) {
     );
     await loadArchiveList();
     await loadSyncSettings();
+    return true;
   } catch (err) {
     setSyncStatus('❌ ' + err.message, 'error');
+    return false;
   } finally {
-    syncPushBtn.disabled = false;
-    syncPullBtn.disabled = false;
+    syncInFlight = false;
+    renderSyncState();
   }
 }
 
 syncPullBtn.addEventListener('click', () => runSync('pull'));
 syncPushBtn.addEventListener('click', () => runSync('push'));
+
+const requestAutoPull = createAutoPull({
+  loadSettings: loadSyncSettings,
+  pull: () => runSync('pull', { automatic: true }),
+  isEnabled: () => autoPullEnabled,
+  isOnline: () => navigator.onLine !== false,
+  isBusy: () => syncInFlight
+});
+
+autoPullOnOpenInput.addEventListener('change', () => {
+  autoPullEnabled = autoPullOnOpenInput.checked;
+  try { localStorage.setItem('exambuilder-auto-pull', String(autoPullEnabled)); } catch { /* chi luu trong phien */ }
+  if (autoPullEnabled) requestAutoPull({ force: true }).catch(() => {});
+});
+autoPushOnCloseInput.addEventListener('change', async () => {
+  try {
+    await postSyncSettings({ auto_push_enabled: autoPushOnCloseInput.checked });
+    await loadSyncSettings();
+  } catch (err) {
+    autoPushOnCloseInput.checked = !autoPushOnCloseInput.checked;
+    setSyncStatus('❌ ' + err.message, 'error');
+  }
+});
+document.getElementById('useSharedGistBtn').addEventListener('click', async () => {
+  try {
+    if (!syncDefaultGistId) await loadSyncSettings();
+    if (!syncDefaultGistId) throw new Error('Chưa đọc được cấu hình kho chung.');
+    await postSyncSettings({ gist_id: syncDefaultGistId });
+    changeGistPanel.classList.add('form-hidden');
+    await loadSyncSettings();
+    if (autoPullEnabled) await requestAutoPull({ force: true });
+  } catch (err) { setSyncStatus('❌ ' + err.message, 'error'); }
+});
+let archiveRecovery = null;
+function recoverArchiveDrafts() {
+  if (!archiveRecovery) archiveRecovery = archiveOutbox.recover().then(ids => {
+    if (ids.length) showCopyToast(`Đã khôi phục ${ids.length} bản đề chưa lưu vào Lịch sử.`, 6000);
+  }).finally(() => { archiveRecovery = null; });
+  return archiveRecovery;
+}
+async function resumeWebSync() {
+  await recoverArchiveDrafts();
+  // Wake an offline outbox immediately on reconnect instead of waiting for backoff.
+  await fetch('/api/sync/auto-push', { method: 'POST' });
+  await requestAutoPull();
+}
+window.addEventListener('online', () => resumeWebSync().catch(() => {}));
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') resumeWebSync().catch(() => {});
+});
+resumeWebSync().catch(() => {});

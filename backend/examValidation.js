@@ -14,12 +14,24 @@ function validateExamPayload(blocks) {
     return ['blocks phai la mot mang'];
   }
   blocks.forEach((block, bi) => {
+    if (!block || typeof block !== 'object' || Array.isArray(block)) {
+      errors.push(`Khoi ${bi + 1}: du lieu khoi khong hop le`);
+      return;
+    }
     if (!VALID_BLOCK_TYPES.includes(block.block_type)) {
       errors.push(`Khoi ${bi + 1}: block_type khong hop le ("${block.block_type}")`);
     }
     const questions = block.questions || [];
+    if (!Array.isArray(questions)) {
+      errors.push(`Khoi ${bi + 1}: questions phai la mot mang`);
+      return;
+    }
     questions.forEach((q, qi) => {
       const loc = `Khoi ${bi + 1} - Cau ${qi + 1}`;
+      if (!q || typeof q !== 'object' || Array.isArray(q)) {
+        errors.push(`${loc}: du lieu cau hoi khong hop le`);
+        return;
+      }
       if (!VALID_QUESTION_TYPES.includes(q.question_type)) {
         errors.push(`${loc}: question_type khong hop le ("${q.question_type}")`);
       }
@@ -31,6 +43,16 @@ function validateExamPayload(blocks) {
       }
       if (q.question_type === 'MCQ') {
         const options = q.options || [];
+        if (!Array.isArray(options)) {
+          errors.push(`${loc}: options phai la mot mang`);
+          return;
+        }
+        options.forEach((option, oi) => {
+          if (!option || typeof option !== 'object' || Array.isArray(option)) {
+            errors.push(`${loc}: lua chon ${oi + 1} khong hop le`);
+          }
+        });
+        if (options.some(o => !o || typeof o !== 'object' || Array.isArray(o))) return;
         if (options.length < 2) {
           errors.push(`${loc}: cau trac nghiem can it nhat 2 lua chon`);
         } else if (q.correct_answer && !options.some(o => o.option_key === q.correct_answer)) {

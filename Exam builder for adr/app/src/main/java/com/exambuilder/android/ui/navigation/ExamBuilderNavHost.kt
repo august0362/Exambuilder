@@ -1,6 +1,13 @@
 package com.exambuilder.android.ui.navigation
 
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.material3.Card
+import androidx.compose.material3.TextButton
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Inventory2
@@ -17,6 +24,9 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.NavHost
@@ -31,6 +41,7 @@ import com.exambuilder.android.ui.screens.PreviewScreen
 import com.exambuilder.android.ui.screens.SettingsScreen
 import com.exambuilder.android.viewmodel.ExamViewModel
 import com.exambuilder.android.viewmodel.LibraryViewModel
+import com.exambuilder.android.viewmodel.AppUpdateViewModel
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.debounce
 
@@ -47,9 +58,11 @@ private enum class Destination(val route: String, val label: String) {
 fun ExamBuilderNavHost(
     viewModel: ExamViewModel,
     libraryViewModel: LibraryViewModel,
-    appSettingsStore: AppSettingsStore
+    appSettingsStore: AppSettingsStore,
+    updateViewModel: AppUpdateViewModel
 ) {
     val navController = rememberNavController()
+    val update by updateViewModel.state.collectAsStateWithLifecycle()
 
     // Tu dong luu moi de vao kho: theo doi state cua trinh soan, debounce 1.2s.
     LaunchedEffect(Unit) {
@@ -63,6 +76,21 @@ fun ExamBuilderNavHost(
     }
 
     Scaffold(
+        topBar = {
+            if (update.release != null && !update.dismissed) {
+                Card(Modifier.fillMaxWidth().statusBarsPadding().padding(8.dp)) {
+                    Column(Modifier.padding(horizontal = 12.dp, vertical = 4.dp)) {
+                        Text("Có ExamBuilder ${update.release?.manifest?.versionName}")
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            TextButton(onClick = {
+                                navController.navigate(Destination.Settings.route) { launchSingleTop = true }
+                            }) { Text("Cập nhật") }
+                            TextButton(onClick = updateViewModel::dismissBanner) { Text("Để sau") }
+                        }
+                    }
+                }
+            }
+        },
         bottomBar = {
             NavigationBar {
                 val navBackStackEntry by navController.currentBackStackEntryAsState()
@@ -117,7 +145,7 @@ fun ExamBuilderNavHost(
                     }
                 )
             }
-            composable(Destination.Settings.route) { SettingsScreen(appSettingsStore) }
+            composable(Destination.Settings.route) { SettingsScreen(appSettingsStore, updateViewModel) }
         }
     }
 }

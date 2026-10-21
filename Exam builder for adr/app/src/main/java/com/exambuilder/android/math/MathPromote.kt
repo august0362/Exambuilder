@@ -121,22 +121,44 @@ object MathPromote {
 
     private val SQRT_CALL = Regex("""\\?sqrt\s*\(""", RegexOption.IGNORE_CASE)
 
-    private fun replaceSqrtCalls(s: String): String {
-        val m = SQRT_CALL.find(s) ?: return s
+    // Cac ham "tim -> thay -> xu ly phan con lai" viet bang vong lap, KHONG de
+    // quy tren phan con lai: 10.000 lan xuat hien "sqrt(" se StackOverflowError
+    // (stack main thread Android nho). Giu dong bo voi mathToLatex.js.
+
+    /** Ket qua xu ly 1 lan khop: [out] da xong, [rest] con lai. */
+    private class Step(val out: String, val rest: String)
+
+    private inline fun scanReplace(input: String, re: Regex, step: (String, MatchResult) -> Step): String {
+        val out = StringBuilder()
+        var s = input
+        while (true) {
+            val m = re.find(s) ?: break
+            val r = step(s, m)
+            out.append(r.out)
+            s = r.rest
+        }
+        return out.append(s).toString()
+    }
+
+    private fun sqrtCallAt(s: String, m: MatchResult, wrap: (String) -> String): Step {
         val open = s.indexOf('(', m.range.first)
         val close = findMatchingParen(s, open)
         if (close < 0) {
             val cut = m.range.first + m.value.length
-            return s.substring(0, cut) + replaceSqrtCalls(s.substring(cut))
+            return Step(s.substring(0, cut), s.substring(cut))
         }
         val inner = bareToLatex(s.substring(open + 1, close))
-        return s.substring(0, m.range.first) + "\\sqrt{$inner}" + replaceSqrtCalls(s.substring(close + 1))
+        return Step(s.substring(0, m.range.first) + wrap("\\sqrt{$inner}"), s.substring(close + 1))
     }
 
-    private val RADICAL_RE = Regex("""([\u2070\u00B9\u00B2\u00B3\u2074\u2075\u2076\u2077\u2078\u2079]*)([\u221A\u221B\u221C])""")
+    private fun replaceSqrtCalls(s: String): String =
+        scanReplace(s, SQRT_CALL) { str, m -> sqrtCallAt(str, m) { it } }
 
-    private fun replaceUnicodeRadicals(s: String): String {
-        val m = RADICAL_RE.find(s) ?: return s
+    private val RADICAL_RE = Regex("""([\u2070\u00B9\u00B2\u00B3\u2074\u2075\u2076\u2077\u2078\u2079]*)([\u221A\u221B\u221C])""")
+    private val RADICAL_OPERAND = Regex("""^([0-9]+|[A-Za-z])""")
+
+    // Dau can don le khong co toan hang - giu nguyen ky tu, di tiep.
+    private fun radicalAt(s: String, m: MatchResult, wrap: (String) -> String): Step {
         val full = m.value
         val sup = m.groupValues[1]
         val sym = m.groupValues[2]
@@ -150,15 +172,16 @@ object MathPromote {
             val close = findMatchingParen(s, after)
             if (close >= 0) { inner = bareToLatex(s.substring(after + 1, close)); end = close + 1 }
         } else {
-            val dm = Regex("""^([0-9]+|[A-Za-z])""").find(s.substring(after))
+            val dm = RADICAL_OPERAND.find(s.substring(after))
             if (dm != null) { inner = bareToLatex(dm.groupValues[1]); end = after + dm.groupValues[1].length }
         }
-        if (inner == null) {
-            return s.substring(0, after) + replaceUnicodeRadicals(s.substring(after))
-        }
+        if (inner == null) return Step(s.substring(0, after), s.substring(after))
         val body = "\\sqrt" + (if (index != null) "[$index]" else "") + "{$inner}"
-        return s.substring(0, m.range.first) + body + replaceUnicodeRadicals(s.substring(end))
+        return Step(s.substring(0, m.range.first) + wrap(body), s.substring(end))
     }
+
+    private fun replaceUnicodeRadicals(s: String): String =
+        scanReplace(s, RADICAL_RE) { str, m -> radicalAt(str, m) { it } }
 
     private val SUPERSCRIPT_RUN = Regex("""[\u2070\u00B9\u00B2\u00B3\u2074\u2075\u2076\u2077\u2078\u2079]+""")
     private val CARET_TOKEN = Regex("""\^(?!\{)([0-9]+|[A-Za-z])""")
@@ -173,7 +196,24 @@ object MathPromote {
     private val MULTI_SPACE = Regex("""\s{2,}""")
     private val STAR_OP = Regex("""\s*\*\s*""")
 
+    // Can/phan so long nhau goi de quy bareToLatex theo do sau. Qua nguong -> giu
+    // nguyen phan tho thay vi tran stack. ThreadLocal vi object dung chung giua
+    // cac coroutine.
+    private const val MAX_NEST_DEPTH = 50
+    private val nestDepth = ThreadLocal.withInitial { 0 }
+
     private fun bareToLatex(expr: String, keepOuterParens: Boolean = false): String {
+        val depth = nestDepth.get()
+        if (depth >= MAX_NEST_DEPTH) return expr.trim()
+        nestDepth.set(depth + 1)
+        try {
+            return bareToLatexAt(expr, keepOuterParens)
+        } finally {
+            nestDepth.set(depth)
+        }
+    }
+
+    private fun bareToLatexAt(expr: String, keepOuterParens: Boolean): String {
         var s = expr.trim()
         DOLLAR_WRAP.find(s)?.let { s = it.groupValues[1].trim() }
         // Ngoac don giao vien go quanh 1 ve phan so mang y nghia gom nhom ->
@@ -241,66 +281,40 @@ object MathPromote {
     private val WS = Regex("""\s""")
 
     // Buoc 1: \sqrt{...}, \sqrt[n]{...}, \frac{...}{...} da hop le -> chi them $.
-    private fun wrapLatexCommands(s: String): String {
-        val m = LATEX_CMD.find(s) ?: return s
+    private fun wrapLatexCommandAt(s: String, m: MatchResult): Step {
         val start = m.range.first
         val name = LATEX_CMD_NAME.find(s.substring(start))!!.groupValues[1]
         val nArgs = if (name == "sqrt") 1 else 2
+        fun skip(i: Int) = Step(s.substring(0, i), s.substring(i))
         var i = start + m.value.length
         if (name == "sqrt" && i < s.length && s[i] == '[') {
             val rb = s.indexOf(']', i)
-            if (rb < 0) return s.substring(0, i) + wrapLatexCommands(s.substring(i))
+            if (rb < 0) return skip(i)
             i = rb + 1
         }
         repeat(nArgs) {
             while (i < s.length && WS.matches(s[i].toString())) i++
-            if (i >= s.length || s[i] != '{') return s.substring(0, i) + wrapLatexCommands(s.substring(i))
+            if (i >= s.length || s[i] != '{') return skip(i)
             val rb = matchBrace(s, i)
-            if (rb < 0) return s.substring(0, i) + wrapLatexCommands(s.substring(i))
+            if (rb < 0) return skip(i)
             i = rb + 1
         }
         TAIL_SCRIPT.find(s.substring(i))?.let { i += it.value.length }
-        val wrapped = "$" + s.substring(start, i).trim() + "$"
-        return s.substring(0, start) + wrapped + wrapLatexCommands(s.substring(i))
+        return Step(s.substring(0, start) + "$" + s.substring(start, i).trim() + "$", s.substring(i))
     }
+
+    private fun wrapLatexCommands(s: String): String =
+        scanReplace(s, LATEX_CMD) { str, m -> wrapLatexCommandAt(str, m) }
+
+    private val wrapDollar: (String) -> String = { "\$$it\$" }
 
     // Buoc 2: sqrt(...) ASCII -> $\sqrt{...}$
-    private fun wrapSqrtCalls(s: String): String {
-        val m = SQRT_CALL.find(s) ?: return s
-        val open = s.indexOf('(', m.range.first)
-        val close = findMatchingParen(s, open)
-        if (close < 0) {
-            val cut = m.range.first + m.value.length
-            return s.substring(0, cut) + wrapSqrtCalls(s.substring(cut))
-        }
-        val inner = bareToLatex(s.substring(open + 1, close))
-        return s.substring(0, m.range.first) + "\$\\sqrt{$inner}\$" + wrapSqrtCalls(s.substring(close + 1))
-    }
+    private fun wrapSqrtCalls(s: String): String =
+        scanReplace(s, SQRT_CALL) { str, m -> sqrtCallAt(str, m, wrapDollar) }
 
     // Buoc 3: \u221A.. / \u221B.. / \u221C.. / superscript\u221A.. -> $\sqrt[n]{...}$
-    private fun wrapUnicodeRadicals(s: String): String {
-        val m = RADICAL_RE.find(s) ?: return s
-        val full = m.value
-        val sup = m.groupValues[1]
-        val sym = m.groupValues[2]
-        val after = m.range.first + full.length
-        var index: String? = when (sym) { "\u221B" -> "3"; "\u221C" -> "4"; else -> null }
-        if (sup.isNotEmpty()) index = sup.map { SUP_TO_DIGIT[it] }.joinToString("")
-
-        var inner: String? = null
-        var end = after
-        if (after < s.length && s[after] == '(') {
-            val close = findMatchingParen(s, after)
-            if (close >= 0) { inner = bareToLatex(s.substring(after + 1, close)); end = close + 1 }
-        } else {
-            val dm = Regex("""^([0-9]+|[A-Za-z])""").find(s.substring(after))
-            if (dm != null) { inner = bareToLatex(dm.groupValues[1]); end = after + dm.groupValues[1].length }
-        }
-        if (inner == null) return s.substring(0, after) + wrapUnicodeRadicals(s.substring(after))
-
-        val body = "\$\\sqrt" + (if (index != null) "[$index]" else "") + "{$inner}\$"
-        return s.substring(0, m.range.first) + body + wrapUnicodeRadicals(s.substring(end))
-    }
+    private fun wrapUnicodeRadicals(s: String): String =
+        scanReplace(s, RADICAL_RE) { str, m -> radicalAt(str, m, wrapDollar) }
 
     // Buoc 4: he so dung truoc cum $...$ ("2$\sqrt{3}$" -> "$2\sqrt{3}$").
     private val LEADING_COEFF = Regex("""(^|[^\\A-Za-z0-9$])([0-9]+)\$(\\[^$]+)\$""")
@@ -464,6 +478,17 @@ object MathPromote {
     private val DIGIT_DOLLAR = Regex("""(?<=\d)\$|\$(?=\d)""")
     private fun dollarCount(s: String) = s.count { it == '$' }
 
+    // A deeply nested sqrt(...) string makes repeated matching scans quadratic.
+    // Preserve it as plain input rather than spending unbounded time parsing it.
+    private fun hasExcessiveParenDepth(s: String): Boolean {
+        var depth = 0
+        for (ch in s) {
+            if (ch == '(' && ++depth > 128) return true
+            if (ch == ')' && depth > 0) depth--
+        }
+        return false
+    }
+
     private class Guarded(val text: String, val hadSentinel: Boolean)
 
     private fun guardLoneDollars(text: String): Guarded {
@@ -479,6 +504,7 @@ object MathPromote {
     /** Boc moi cau truc toan 2 chieu ngoai $...$ thanh $...$ LaTeX. Idempotent. */
     fun promote(text: String?): String {
         if (text.isNullOrEmpty()) return text ?: ""
+        if (hasExcessiveParenDepth(text)) return text
         val guarded = guardLoneDollars(text)
         var result = guarded.text
         for (i in 0 until 6) {

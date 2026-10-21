@@ -171,3 +171,19 @@ test('TC-RAW-01: raw_prompt (thu vien mau) -> gui nguyen prompt, tra van ban tho
   expect(sent).toContain('ĐƯỢC PHÉP HỎI LẠI');
   expect(sent).not.toContain('NGỮ CẢNH THAM KHẢO');
 });
+
+test('TC-RAW-02: raw_prompt + tai lieu (sinh theo mau qua API) -> prompt mau kem ngu canh tai lieu, tra context_info', async () => {
+  await withKey();
+  const db = await getDb();
+  await db.run("INSERT INTO RESOURCE_DOCUMENT (doc_id, title) VALUES ('doc-1', 'SGK Toan 9')");
+  await db.run("INSERT INTO RESOURCE_SECTION (section_id, doc_id, section_title, content, sort_order) VALUES ('sec-1', 'doc-1', 'Can bac hai', 'NOI_DUNG_CAN_BAC_HAI', 0)");
+  mockGenerate.mockResolvedValue('=PHAN_1=' + NL + '[CAU_HOI]' + NL + 'Ma_Khung: builtin.t01.s01.q001');
+  const res = await request(buildApp()).post('/api/generate').send({ provider: 'openai', model_name: 'gpt-x', raw_prompt: 'PROMPT_P1_CUA_MAU', doc_id: 'doc-1' });
+  expect(res.status).toBe(200);
+  expect(res.body.context_info).toMatchObject({ sections: 1, mode: 'full' });
+  const sent = mockGenerate.mock.calls[0][0];
+  expect(sent.startsWith('PROMPT_P1_CUA_MAU')).toBe(true);
+  expect(sent).toContain('NGỮ CẢNH THAM KHẢO');
+  expect(sent).toContain('NOI_DUNG_CAN_BAC_HAI');
+  expect(sent).toContain('GIỮ NGUYÊN cú pháp');
+});

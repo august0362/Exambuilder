@@ -120,6 +120,26 @@ CREATE TABLE IF NOT EXISTS SYNC_SETTINGS (
   last_synced_at TEXT
 );
 
+-- Outbox ben vung: chi cac thao tac sua/xoa cuc bo tang revision.
+-- Pull khong danh dau ban cloud thanh thay doi can day nguoc lai.
+CREATE TABLE IF NOT EXISTS AUTO_SYNC_STATE (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  enabled INTEGER NOT NULL DEFAULT 1,
+  revision INTEGER NOT NULL DEFAULT 0,
+  pushed_revision INTEGER NOT NULL DEFAULT 0,
+  theme_json TEXT,
+  last_error TEXT,
+  last_pushed_at TEXT
+);
+INSERT OR IGNORE INTO AUTO_SYNC_STATE (id, revision)
+  SELECT 1, CASE WHEN EXISTS (SELECT 1 FROM SAVED_EXAM) THEN 1 ELSE 0 END;
+CREATE TABLE IF NOT EXISTS ARCHIVE_WRITE_VERSION (
+  client_id TEXT NOT NULL,
+  exam_id TEXT NOT NULL REFERENCES SAVED_EXAM(exam_id) ON DELETE CASCADE,
+  revision INTEGER NOT NULL,
+  PRIMARY KEY (client_id, exam_id)
+);
+
 -- User templates only. Built-in templates live in the versioned code manifest.
 CREATE TABLE IF NOT EXISTS TEMPLATE (
   template_id      TEXT PRIMARY KEY,

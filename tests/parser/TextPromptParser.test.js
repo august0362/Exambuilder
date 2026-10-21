@@ -1,4 +1,4 @@
-const { TextPromptParser } = require('../../backend/parser/TextPromptParser.js');
+const { TextPromptParser, splitSubparts } = require('../../backend/parser/TextPromptParser.js');
 
 /**
  * TextPromptParser bóc tách văn bản thô (định dạng chuẩn cho prompt Gemini,
@@ -924,5 +924,74 @@ Dap_An: A
         expect(() => parser.parse(value)).toThrow('Noi dung dan vao dang rong.');
       }
     );
+  });
+  // ---------------------------------------------------------------------
+  // CAU NHIEU Y a) b) c): giu xuong dong de moi y hien mot dong
+  // ---------------------------------------------------------------------
+  describe('Cau nhieu y (a, b, c)', () => {
+    test('TC-TP-30: moi y tren dong rieng duoi De_Bai/Loi_Giai duoc giu xuong dong', () => {
+      const raw = `=PHAN_2_TU_LUAN=
+[CAU_HOI]
+Loai: TU_LUAN
+Muc_Do: Van_Dung
+De_Bai: Cho biểu thức $A = \\dfrac{2x + 5}{x - 1}$ với x ≠ 1.
+a) Tính A khi x = 3.
+b) Tìm x để A = 4.
+So_Dong_Nhap: 8
+Loi_Giai: Lời giải từng ý:
+a) A = 11/2.
+b) x = 9/2.`;
+      const q = parser.parse(raw)[0].questions[0];
+      expect(q.content.split('\n')).toEqual([
+        'Cho biểu thức $A = \\dfrac{2x + 5}{x - 1}$ với x ≠ 1.',
+        'a) Tính A khi x = 3.',
+        'b) Tìm x để A = 4.'
+      ]);
+      const explLines = q.explanation.split('\n');
+      expect(explLines).toHaveLength(3);
+      expect(explLines[2]).toMatch(/^b\) /);
+      expect(q.draft_lines_count).toBe(8);
+    });
+
+    test('TC-TP-31: cac y bi AI don vao 1 dong (1) 2) 3) hoac a) b)) duoc tach thanh tung dong', () => {
+      const raw = `=PHAN_2_TU_LUAN=
+[CAU_HOI]
+Loai: TU_LUAN
+Muc_Do: Van_Dung
+De_Bai: Thực hiện các yêu cầu sau: 1) (Nhận biết) Tìm x để A = 4. 2) (Thông hiểu) Tìm x nguyên. 3) (Vận dụng) Tìm x.
+So_Dong_Nhap: 6
+Loi_Giai: a) x = 3. b) x thuộc {0; 2}.`;
+      const q = parser.parse(raw)[0].questions[0];
+      expect(q.content.split('\n')).toEqual([
+        'Thực hiện các yêu cầu sau:',
+        '1) (Nhận biết) Tìm x để A = 4.',
+        '2) (Thông hiểu) Tìm x nguyên.',
+        '3) (Vận dụng) Tìm x.'
+      ]);
+      expect(q.explanation.split('\n')).toEqual(['a) x = 3.', 'b) x thuộc {0; 2}.']);
+    });
+
+    test('TC-TP-32: khong tach nham bieu thuc, cong thuc $...$ va dong van xuoi bi ngat', () => {
+      expect(splitSubparts('Giải (x - 1)(x + 2) = 0 với a) b) trong ngoặc.')).toBe('Giải (x - 1)(x + 2) = 0 với a) b) trong ngoặc.');
+      expect(splitSubparts('Xét $f(a) + f(b)$. a) Tính.')).toBe('Xét $f(a) + f(b)$. a) Tính.');
+      expect(splitSubparts('Xét $x. 1) y. 2)$ rồi tính.')).toBe('Xét $x. 1) y. 2)$ rồi tính.');
+      const raw = `=PHAN_1_TRAC_NGHIEM=
+[CAU_HOI]
+Loai: TN
+Muc_Do: Nhan_Biet
+De_Bai: Một câu hỏi dài
+bị ngắt dòng giữa chừng khi dán.
+A. 1
+B. 2
+Dap_An: A
+Loi_Giai: Vì vậy.`;
+      expect(parser.parse(raw)[0].questions[0].content).toBe('Một câu hỏi dài bị ngắt dòng giữa chừng khi dán.');
+    });
+
+    test('TC-TP-33: splitSubparts idempotent', () => {
+      const once = splitSubparts('Cho A: a) Tính. b) Tìm. c) Chứng minh.');
+      expect(once).toBe('Cho A:\na) Tính.\nb) Tìm.\nc) Chứng minh.');
+      expect(splitSubparts(once)).toBe(once);
+    });
   });
 });

@@ -89,9 +89,15 @@ function buildPrompt({ topic, sectionsContent = [], questionSpec = [], extraInst
 }
 
 // Prompt da dung san (vd prompt P1/P2/P3 cua thu vien mau): giu nguyen, chi them
-// trao doi voi nguoi dung va luat duoc phep hoi lai.
-function buildRawPrompt(rawPrompt, { allowQuestions = false, clarifications = [] } = {}) {
+// tai lieu tham khao giao vien chon, trao doi voi nguoi dung va luat duoc phep hoi lai.
+function buildRawPrompt(rawPrompt, { allowQuestions = false, clarifications = [], sectionsContent = [] } = {}) {
   const parts = [String(rawPrompt).trim()];
+  if (sectionsContent.length > 0) {
+    parts.push(
+      'NGỮ CẢNH THAM KHẢO TỪ TÀI LIỆU CỦA GIÁO VIÊN (đọc kỹ; ra đề bám sát kiến thức, thuật ngữ, ví dụ trong tài liệu, nhưng GIỮ NGUYÊN cú pháp, số câu, Ma_Khung, Diem đã quy định ở trên):\n' +
+      sectionsContent.join('\n\n---\n\n')
+    );
+  }
   const clarifyText = formatClarifications(clarifications);
   if (clarifyText) parts.push(clarifyText);
   if (allowQuestions) parts.push(ASK_USER_RULE);

@@ -52,24 +52,36 @@ function plainOf(term) {
 // dung cho noi dung ben trong \sqrt{...} va 2 ve cua \frac{...}{...}.
 // ---------------------------------------------------------------------------
 
-function replaceSqrtCalls(s) {
-  const m = /\\?sqrt\s*\(/i.exec(s);
-  if (!m) return s;
+// Cac ham "tim -> thay -> xu ly phan con lai" duoi day viet bang vong lap, KHONG
+// de quy tren phan con lai: 10.000 lan xuat hien "sqrt(" se lam tran stack.
+
+// sqrt(...) ASCII tai vi tri m: { out, rest } - out da xu ly, rest con lai.
+function sqrtCallAt(s, m, wrap) {
   const open = s.indexOf('(', m.index);
   const close = findMatchingParen(s, open);
   if (close < 0) {
     const cut = m.index + m[0].length;
-    return s.slice(0, cut) + replaceSqrtCalls(s.slice(cut));
+    return { out: s.slice(0, cut), rest: s.slice(cut) };
   }
   const inner = bareToLatex(s.slice(open + 1, close));
-  return s.slice(0, m.index) + `\\sqrt{${inner}}` + replaceSqrtCalls(s.slice(close + 1));
+  return { out: s.slice(0, m.index) + wrap(`\\sqrt{${inner}}`), rest: s.slice(close + 1) };
+}
+
+function replaceSqrtCalls(s) {
+  let out = '';
+  for (let m; (m = /\\?sqrt\s*\(/i.exec(s)); ) {
+    const r = sqrtCallAt(s, m, body => body);
+    out += r.out;
+    s = r.rest;
+  }
+  return out + s;
 }
 
 const RADICAL_RE = /([⁰¹²³⁴⁵⁶⁷⁸⁹]*)([√∛∜])/;
 
-function replaceUnicodeRadicals(s) {
-  const m = RADICAL_RE.exec(s);
-  if (!m) return s;
+// Dau can Unicode tai vi tri m: { out, rest }. Dau can don le khong co toan
+// hang - giu nguyen ky tu, di tiep.
+function radicalAt(s, m, wrap) {
   const [full, sup, sym] = m;
   const after = m.index + full.length;
   let index = sym === '∛' ? '3' : sym === '∜' ? '4' : null;
@@ -84,12 +96,19 @@ function replaceUnicodeRadicals(s) {
     const dm = /^([0-9]+|[A-Za-z])/.exec(s.slice(after));
     if (dm) { inner = bareToLatex(dm[1]); end = after + dm[1].length; }
   }
-  if (inner === null) {
-    // Dau can don le khong co toan hang - giu nguyen ky tu, di tiep.
-    return s.slice(0, after) + replaceUnicodeRadicals(s.slice(after));
-  }
+  if (inner === null) return { out: s.slice(0, after), rest: s.slice(after) };
   const body = `\\sqrt${index ? `[${index}]` : ''}{${inner}}`;
-  return s.slice(0, m.index) + body + replaceUnicodeRadicals(s.slice(end));
+  return { out: s.slice(0, m.index) + wrap(body), rest: s.slice(end) };
+}
+
+function replaceUnicodeRadicals(s) {
+  let out = '';
+  for (let m; (m = RADICAL_RE.exec(s)); ) {
+    const r = radicalAt(s, m, body => body);
+    out += r.out;
+    s = r.rest;
+  }
+  return out + s;
 }
 
 // ² ³ ... -> ^{2} ; ^12 -> ^{12} ; ^x -> ^{x} ; ^{...} giu nguyen.
@@ -99,7 +118,22 @@ function liftSuperscripts(s) {
   return s;
 }
 
+// Can/phan so long nhau goi de quy bareToLatex theo do sau. Qua nguong -> giu
+// nguyen phan tho (cong thuc that hiem khi long qua 5 tang) thay vi tran stack.
+const MAX_NEST_DEPTH = 50;
+let nestDepth = 0;
+
 function bareToLatex(expr, keepOuterParens = false) {
+  if (nestDepth >= MAX_NEST_DEPTH) return String(expr).trim();
+  nestDepth++;
+  try {
+    return bareToLatexAt(expr, keepOuterParens);
+  } finally {
+    nestDepth--;
+  }
+}
+
+function bareToLatexAt(expr, keepOuterParens) {
   let s = String(expr).trim();
   const dollar = /^\$([\s\S]*)\$$/.exec(s);
   if (dollar) s = dollar[1].trim();
@@ -164,68 +198,62 @@ function splitProtected(text) {
 
 // Buoc 1: \sqrt{...}, \sqrt[n]{...}, \frac{...}{...} (da la LaTeX hop le) ->
 // chi them dau $...$, KHONG bien doi noi dung.
-function wrapLatexCommands(s) {
-  const m = /\\(?:sqrt|dfrac|tfrac|frac)\b/.exec(s);
-  if (!m) return s;
+function wrapLatexCommandAt(s, m) {
   const start = m.index;
   const name = /^\\(sqrt|dfrac|tfrac|frac)/.exec(s.slice(start))[1];
   const nArgs = name === 'sqrt' ? 1 : 2;
+  const skip = i => ({ out: s.slice(0, i), rest: s.slice(i) });
   let i = start + m[0].length;
   if (name === 'sqrt' && s[i] === '[') {
     const rb = s.indexOf(']', i);
-    if (rb < 0) return s.slice(0, i) + wrapLatexCommands(s.slice(i));
+    if (rb < 0) return skip(i);
     i = rb + 1;
   }
   for (let a = 0; a < nArgs; a++) {
     while (i < s.length && /\s/.test(s[i])) i++;
-    if (s[i] !== '{') return s.slice(0, i) + wrapLatexCommands(s.slice(i));
+    if (s[i] !== '{') return skip(i);
     const rb = matchBrace(s, i);
-    if (rb < 0) return s.slice(0, i) + wrapLatexCommands(s.slice(i));
+    if (rb < 0) return skip(i);
     i = rb + 1;
   }
   // Hut them "^{...}" / "^x" / "_{...}" bam ngay sau (vd (\sqrt{a})^2 viet tho).
   const tail = /^(?:\s*[\^_](?:\{[^{}]*\}|[A-Za-z0-9]))+/.exec(s.slice(i));
   if (tail) i += tail[0].length;
-  const wrapped = '$' + s.slice(start, i).trim() + '$';
-  return s.slice(0, start) + wrapped + wrapLatexCommands(s.slice(i));
+  return { out: s.slice(0, start) + '$' + s.slice(start, i).trim() + '$', rest: s.slice(i) };
 }
+
+function wrapLatexCommands(s) {
+  let out = '';
+  for (let m; (m = /\\(?:sqrt|dfrac|tfrac|frac)\b/.exec(s)); ) {
+    const r = wrapLatexCommandAt(s, m);
+    out += r.out;
+    s = r.rest;
+  }
+  return out + s;
+}
+
+const wrapDollar = body => `$${body}$`;
 
 // Buoc 2: sqrt(...) ASCII -> $\sqrt{...}$
 function wrapSqrtCalls(s) {
-  const m = /\\?sqrt\s*\(/i.exec(s);
-  if (!m) return s;
-  const open = s.indexOf('(', m.index);
-  const close = findMatchingParen(s, open);
-  if (close < 0) {
-    const cut = m.index + m[0].length;
-    return s.slice(0, cut) + wrapSqrtCalls(s.slice(cut));
+  let out = '';
+  for (let m; (m = /\\?sqrt\s*\(/i.exec(s)); ) {
+    const r = sqrtCallAt(s, m, wrapDollar);
+    out += r.out;
+    s = r.rest;
   }
-  const inner = bareToLatex(s.slice(open + 1, close));
-  return s.slice(0, m.index) + `$\\sqrt{${inner}}$` + wrapSqrtCalls(s.slice(close + 1));
+  return out + s;
 }
 
 // Buoc 3: √.. / ∛.. / ∜.. / ⁿ√.. (Unicode) -> $\sqrt[n]{...}$
 function wrapUnicodeRadicals(s) {
-  const m = RADICAL_RE.exec(s);
-  if (!m) return s;
-  const [full, sup, sym] = m;
-  const after = m.index + full.length;
-  let index = sym === '∛' ? '3' : sym === '∜' ? '4' : null;
-  if (sup) index = [...sup].map(c => SUP_TO_DIGIT[c]).join('');
-
-  let inner = null;
-  let end = after;
-  if (s[after] === '(') {
-    const close = findMatchingParen(s, after);
-    if (close >= 0) { inner = bareToLatex(s.slice(after + 1, close)); end = close + 1; }
-  } else {
-    const dm = /^([0-9]+|[A-Za-z])/.exec(s.slice(after));
-    if (dm) { inner = bareToLatex(dm[1]); end = after + dm[1].length; }
+  let out = '';
+  for (let m; (m = RADICAL_RE.exec(s)); ) {
+    const r = radicalAt(s, m, wrapDollar);
+    out += r.out;
+    s = r.rest;
   }
-  if (inner === null) return s.slice(0, after) + wrapUnicodeRadicals(s.slice(after));
-
-  const body = `$\\sqrt${index ? `[${index}]` : ''}{${inner}}$`;
-  return s.slice(0, m.index) + body + wrapUnicodeRadicals(s.slice(end));
+  return out + s;
 }
 
 // Buoc 4: he so dung truoc cum $...$ ("2$\sqrt{3}$" -> "$2\sqrt{3}$"). Chi
@@ -396,6 +424,17 @@ function onePass(text) {
 // (PUA, khong khop \p{L}/[0-9A-Za-z]/toan tu) roi tra lai o cuoi.
 const LONE_DOLLAR_SENTINEL = String.fromCharCode(0xF8FF);
 const dollarCount = s => (s.match(/\$/g) || []).length;
+// Deeply nested parenthesis input makes each sqrt(...) scan revisit most of
+// the remaining string. Leave unusually deep expressions untouched instead
+// of spending quadratic time on malformed or machine-generated input.
+function hasExcessiveParenDepth(s) {
+  let depth = 0;
+  for (let i = 0; i < s.length; i++) {
+    if (s[i] === '(' && ++depth > 128) return true;
+    if (s[i] === ')' && depth > 0) depth--;
+  }
+  return false;
+}
 function guardLoneDollars(text) {
   if (dollarCount(text) % 2 === 0) return { text, restore: s => s };
   // "$" dinh sat chu so (tien te "5$" / "$5") gan nhu chac chan la dau LE.
@@ -413,6 +452,7 @@ function guardLoneDollars(text) {
  */
 export function promoteStructuralMath(text) {
   if (typeof text !== 'string' || !text) return text;
+  if (hasExcessiveParenDepth(text)) return text;
   const guarded = guardLoneDollars(text);
   let result = guarded.text;
   for (let i = 0; i < 6; i++) {

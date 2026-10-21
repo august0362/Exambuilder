@@ -306,16 +306,15 @@ describe('share_code bien va doc hai', () => {
 // H. GIA TRI SO BIEN / AM / QUA LON
 // -------------------------------------------------------------------------
 describe('Gia tri so bien', () => {
-  test('TC-ADV-15 [Ghi nhan hanh vi]: expires_in_days am tao ra link da het han ngay tu luc tao', async () => {
+  test('TC-ADV-15 [Da sua]: expires_in_days am / khong phai so / qua lon bi tu choi 400 (truoc day: so am tao link het han, chuoi lam crash 500)', async () => {
     const app = buildApp();
     const saveRes = await request(app).post('/api/exams/save').send(examPayload());
-    const shareRes = await request(app)
-      .post('/api/exams/share')
-      .send({ exam_id: saveRes.body.exam_id, expires_in_days: -5 });
-    expect(shareRes.status).toBe(200);
-
-    const getRes = await request(app).get(`/api/exams/shared/${shareRes.body.share_code}`);
-    expect(getRes.status).toBe(410); // da het han vi expires_at nam trong qua khu
+    for (const bad of [-5, 'soon', 1e308, 3651]) {
+      const shareRes = await request(app)
+        .post('/api/exams/share')
+        .send({ exam_id: saveRes.body.exam_id, expires_in_days: bad });
+      expect(shareRes.status).toBe(400);
+    }
   });
 
   test('TC-ADV-16 [Ghi nhan hanh vi]: draft_lines_count cuc lon (1,000,000) van duoc luu, khong crash server', async () => {

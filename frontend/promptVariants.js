@@ -18,7 +18,8 @@ Kết quả của bạn sẽ được một PHẦN MỀM ĐỌC TỰ ĐỘNG, kh
       =PHAN_2_TU_LUAN=       → chỉ chứa câu loại TU_LUAN
 3. Mỗi câu hỏi bắt đầu bằng đúng dòng:  [CAU_HOI]  — nằm một mình trên dòng, có một dòng trống ngay phía trước. TUYỆT ĐỐI không nối "[CAU_HOI]" hay dòng header vào cuối dòng "Loi_Giai:" của câu trước.
 4. Mỗi câu chỉ được có DUY NHẤT một dòng "Dap_An:" và DUY NHẤT một dòng "Loi_Giai:". Hãy suy nghĩ và tự kiểm tra thật kỹ TRƯỚC khi viết, rồi chỉ ghi ra đáp án CUỐI CÙNG mà bạn chắc chắn đúng. Không được ghi "Dap_An:" hoặc "Loi_Giai:" lần thứ hai để tự sửa lại trong cùng một câu.
-5. Mỗi trường viết trên MỘT dòng, đúng dạng "Tên_Trường: giá trị". Tên trường viết y hệt (Loai, Muc_Do, De_Bai, Dap_An, Loi_Giai, So_Dong_Nhap) — không dịch, không đổi, không thêm khoảng trắng trong tên. Nội dung "De_Bai:" viết gọn trên một dòng, KHÔNG xuống dòng giữa chừng và KHÔNG bắt đầu bất kỳ dòng nào bằng "A." … "D." hay bằng tên một trường.
+5. Mỗi trường viết trên MỘT dòng, đúng dạng "Tên_Trường: giá trị". Tên trường viết y hệt (Loai, Muc_Do, De_Bai, Dap_An, Loi_Giai, So_Dong_Nhap) — không dịch, không đổi, không thêm khoảng trắng trong tên. Nội dung "De_Bai:" viết liền trên một dòng, KHÔNG xuống dòng giữa câu — ngoại lệ DUY NHẤT là các ý nhỏ a) b) c)… theo quy tắc 6 — và KHÔNG bắt đầu bất kỳ dòng nào bằng "A." … "D." hay bằng tên một trường.
+6. CÂU CÓ NHIỀU Ý NHỎ (thường là TU_LUAN): dòng "De_Bai:" chỉ ghi phần dẫn chung (dữ kiện, biểu thức, hình vẽ được mô tả…). Sau đó MỖI Ý NHỎ VIẾT TRÊN MỘT DÒNG RIÊNG ngay bên dưới, theo thứ tự, mỗi dòng bắt đầu bằng chữ cái thường + dấu ngoặc đóng + một dấu cách: "a) ", "b) ", "c) ", "d) ", "e) ". TUYỆT ĐỐI KHÔNG dồn nhiều ý vào cùng một dòng (sai: "De_Bai: Cho A = … a) Tính … b) Tìm …"). KHÔNG đánh số ý bằng "1)", "1.", "a.", "A.", "Ý 1:" hay gạch đầu dòng; KHÔNG để dòng trống giữa các ý. Với TU_LUAN, các dòng ý nằm NGAY SAU dòng "De_Bai:" và TRƯỚC dòng "So_Dong_Nhap:". Lời giải cũng trình bày như vậy: dòng "Loi_Giai:" ghi phần chung (nếu có, hoặc ghi "Lời giải từng ý:"), rồi lời giải mỗi ý trên một dòng riêng bắt đầu bằng "a) ", "b) "… đúng thứ tự như đề. Nếu các ý khác mức độ, ghi Muc_Do theo ý khó nhất.
 
 ━━━━━━━━━━━━━━ TỪ VỰNG BẮT BUỘC ━━━━━━━━━━━━━━
 Trường Loai — viết đúng MỘT trong 4 giá trị:  TN  |  DUNG_SAI  |  DIEN_TU  |  TU_LUAN
@@ -62,6 +63,20 @@ Trường Muc_Do — viết đúng MỘT trong 4 giá trị:  Nhan_Biet  |  Thon
   De_Bai: <đề bài yêu cầu học sinh trình bày lời giải>
   So_Dong_Nhap: <số nguyên dương — số dòng kẻ trống chừa cho học sinh làm bài, ví dụ 5 đến 12>
   Loi_Giai: <hướng dẫn chấm / đáp án / các bước giải chi tiết>
+
+• TU_LUAN có nhiều ý nhỏ — mỗi ý MỘT DÒNG RIÊNG (quy tắc 6):
+  [CAU_HOI]
+  Loai: TU_LUAN
+  Muc_Do: <mức độ của ý khó nhất>
+  De_Bai: <phần dẫn chung của câu>
+  a) <yêu cầu ý a>
+  b) <yêu cầu ý b>
+  c) <yêu cầu ý c>
+  So_Dong_Nhap: <số dòng kẻ cho cả câu>
+  Loi_Giai: Lời giải từng ý:
+  a) <lời giải ý a>
+  b) <lời giải ý b>
+  c) <lời giải ý c>
 
 ━━━━━━━━━━━━━━ CÁCH VIẾT CÔNG THỨC TOÁN ━━━━━━━━━━━━━━
 - BẮT BUỘC bọc trong $...$ và viết bằng LaTeX chuẩn cho MỌI công thức có cấu trúc 2 chiều (bên trên/bên dưới một gạch ngang):
@@ -114,7 +129,18 @@ De_Bai: <đề bài tự luận>
 So_Dong_Nhap: 8
 Loi_Giai: <hướng dẫn chấm và các bước giải chi tiết>
 
-LƯU Ý DÀNH RIÊNG CHO GEMINI: Nếu câu trả lời có nguy cơ bị dừng giữa chừng do giới hạn độ dài, hãy ưu tiên viết trọn vẹn từng câu hỏi (đủ cả "Dap_An:" và "Loi_Giai:") rồi mới dừng, không bỏ dở một câu đang viết. Nếu bạn tự chèn dấu ** hoặc gạch đầu dòng markdown, hãy xuất lại không dùng markdown.`,
+[CAU_HOI]
+Loai: TU_LUAN
+Muc_Do: Van_Dung
+De_Bai: <phần dẫn chung>
+a) <yêu cầu ý a>
+b) <yêu cầu ý b>
+So_Dong_Nhap: 8
+Loi_Giai: Lời giải từng ý:
+a) <lời giải ý a>
+b) <lời giải ý b>
+
+LƯU Ý DÀNH RIÊNG CHO GEMINI: Nếu câu trả lời có nguy cơ bị dừng giữa chừng do giới hạn độ dài, hãy ưu tiên viết trọn vẹn từng câu hỏi (đủ cả "Dap_An:" và "Loi_Giai:") rồi mới dừng, không bỏ dở một câu đang viết. Nếu bạn tự chèn dấu ** hoặc gạch đầu dòng markdown, hãy xuất lại không dùng markdown. Gemini hay gộp các ý nhỏ của một câu thành một đoạn văn liền — KHÔNG làm vậy: với câu nhiều ý, BẮT BUỘC xuống dòng trước mỗi ý "a) ", "b) ", "c) "… cả trong đề bài lẫn lời giải (quy tắc 6).`,
     example: `=PHAN_1_TRAC_NGHIEM=
 [CAU_HOI]
 Loai: TN
@@ -176,7 +202,8 @@ Kết quả của bạn sẽ được một PHẦN MỀM ĐỌC TỰ ĐỘNG, kh
       =PHAN_2_TU_LUAN=       → chỉ chứa câu loại TU_LUAN
 3. Mỗi câu hỏi bắt đầu bằng đúng dòng:  [CAU_HOI]  — nằm một mình trên dòng, có một dòng trống ngay phía trước. TUYỆT ĐỐI không nối "[CAU_HOI]" hay dòng header vào cuối dòng "Loi_Giai:" của câu trước.
 4. Mỗi câu chỉ được có DUY NHẤT một dòng "Dap_An:" và DUY NHẤT một dòng "Loi_Giai:". Hãy suy nghĩ và tự kiểm tra thật kỹ TRƯỚC khi viết, rồi chỉ ghi ra đáp án CUỐI CÙNG mà bạn chắc chắn đúng. Không được ghi "Dap_An:" hoặc "Loi_Giai:" lần thứ hai để tự sửa lại trong cùng một câu.
-5. Mỗi trường viết trên MỘT dòng, đúng dạng "Tên_Trường: giá trị". Tên trường viết y hệt (Loai, Muc_Do, De_Bai, Dap_An, Loi_Giai, So_Dong_Nhap) — không dịch, không đổi, không thêm khoảng trắng trong tên. Nội dung "De_Bai:" viết gọn trên một dòng, KHÔNG xuống dòng giữa chừng và KHÔNG bắt đầu bất kỳ dòng nào bằng "A." … "D." hay bằng tên một trường.
+5. Mỗi trường viết trên MỘT dòng, đúng dạng "Tên_Trường: giá trị". Tên trường viết y hệt (Loai, Muc_Do, De_Bai, Dap_An, Loi_Giai, So_Dong_Nhap) — không dịch, không đổi, không thêm khoảng trắng trong tên. Nội dung "De_Bai:" viết liền trên một dòng, KHÔNG xuống dòng giữa câu — ngoại lệ DUY NHẤT là các ý nhỏ a) b) c)… theo quy tắc 6 — và KHÔNG bắt đầu bất kỳ dòng nào bằng "A." … "D." hay bằng tên một trường.
+6. CÂU CÓ NHIỀU Ý NHỎ (thường là TU_LUAN): dòng "De_Bai:" chỉ ghi phần dẫn chung (dữ kiện, biểu thức, hình vẽ được mô tả…). Sau đó MỖI Ý NHỎ VIẾT TRÊN MỘT DÒNG RIÊNG ngay bên dưới, theo thứ tự, mỗi dòng bắt đầu bằng chữ cái thường + dấu ngoặc đóng + một dấu cách: "a) ", "b) ", "c) ", "d) ", "e) ". TUYỆT ĐỐI KHÔNG dồn nhiều ý vào cùng một dòng (sai: "De_Bai: Cho A = … a) Tính … b) Tìm …"). KHÔNG đánh số ý bằng "1)", "1.", "a.", "A.", "Ý 1:" hay gạch đầu dòng; KHÔNG để dòng trống giữa các ý. Với TU_LUAN, các dòng ý nằm NGAY SAU dòng "De_Bai:" và TRƯỚC dòng "So_Dong_Nhap:". Lời giải cũng trình bày như vậy: dòng "Loi_Giai:" ghi phần chung (nếu có, hoặc ghi "Lời giải từng ý:"), rồi lời giải mỗi ý trên một dòng riêng bắt đầu bằng "a) ", "b) "… đúng thứ tự như đề. Nếu các ý khác mức độ, ghi Muc_Do theo ý khó nhất.
 
 ━━━━━━━━━━━━━━ TỪ VỰNG BẮT BUỘC ━━━━━━━━━━━━━━
 Trường Loai — viết đúng MỘT trong 4 giá trị:  TN  |  DUNG_SAI  |  DIEN_TU  |  TU_LUAN
@@ -220,6 +247,20 @@ Trường Muc_Do — viết đúng MỘT trong 4 giá trị:  Nhan_Biet  |  Thon
   De_Bai: <đề bài yêu cầu học sinh trình bày lời giải>
   So_Dong_Nhap: <số nguyên dương — số dòng kẻ trống chừa cho học sinh làm bài, ví dụ 5 đến 12>
   Loi_Giai: <hướng dẫn chấm / đáp án / các bước giải chi tiết>
+
+• TU_LUAN có nhiều ý nhỏ — mỗi ý MỘT DÒNG RIÊNG (quy tắc 6):
+  [CAU_HOI]
+  Loai: TU_LUAN
+  Muc_Do: <mức độ của ý khó nhất>
+  De_Bai: <phần dẫn chung của câu>
+  a) <yêu cầu ý a>
+  b) <yêu cầu ý b>
+  c) <yêu cầu ý c>
+  So_Dong_Nhap: <số dòng kẻ cho cả câu>
+  Loi_Giai: Lời giải từng ý:
+  a) <lời giải ý a>
+  b) <lời giải ý b>
+  c) <lời giải ý c>
 
 ━━━━━━━━━━━━━━ CÁCH VIẾT CÔNG THỨC TOÁN ━━━━━━━━━━━━━━
 - BẮT BUỘC bọc trong $...$ và viết bằng LaTeX chuẩn cho MỌI công thức có cấu trúc 2 chiều (bên trên/bên dưới một gạch ngang):
@@ -272,7 +313,18 @@ De_Bai: <đề bài tự luận>
 So_Dong_Nhap: 8
 Loi_Giai: <hướng dẫn chấm và các bước giải chi tiết>
 
-LƯU Ý DÀNH RIÊNG CHO GEMINI PRO: Nhờ cửa sổ ngữ cảnh lớn, có thể dán kèm nguyên văn nội dung sách/bài giảng vào cuối prompt này làm tư liệu tham khảo ngay trong cùng một lượt hỏi. Nếu bạn bật chế độ suy luận sâu (Thinking/Deep Think), CHỈ xuất ra đáp án và lời giải cuối cùng theo đúng định dạng — không in ra các bước suy nghĩ trung gian, không có thẻ hay mục nào khác đứng trước dòng "=PHAN_1_TRAC_NGHIEM=".`,
+[CAU_HOI]
+Loai: TU_LUAN
+Muc_Do: Van_Dung
+De_Bai: <phần dẫn chung>
+a) <yêu cầu ý a>
+b) <yêu cầu ý b>
+So_Dong_Nhap: 8
+Loi_Giai: Lời giải từng ý:
+a) <lời giải ý a>
+b) <lời giải ý b>
+
+LƯU Ý DÀNH RIÊNG CHO GEMINI PRO: Nhờ cửa sổ ngữ cảnh lớn, có thể dán kèm nguyên văn nội dung sách/bài giảng vào cuối prompt này làm tư liệu tham khảo ngay trong cùng một lượt hỏi. Nếu bạn bật chế độ suy luận sâu (Thinking/Deep Think), CHỈ xuất ra đáp án và lời giải cuối cùng theo đúng định dạng — không in ra các bước suy nghĩ trung gian, không có thẻ hay mục nào khác đứng trước dòng "=PHAN_1_TRAC_NGHIEM=". Gemini hay gộp các ý nhỏ của một câu thành một đoạn văn liền — KHÔNG làm vậy: với câu nhiều ý, BẮT BUỘC xuống dòng trước mỗi ý "a) ", "b) ", "c) "… cả trong đề bài lẫn lời giải (quy tắc 6).`,
     example: `=PHAN_1_TRAC_NGHIEM=
 [CAU_HOI]
 Loai: TN
@@ -334,7 +386,8 @@ Kết quả của bạn sẽ được một PHẦN MỀM ĐỌC TỰ ĐỘNG, kh
       =PHAN_2_TU_LUAN=       → chỉ chứa câu loại TU_LUAN
 3. Mỗi câu hỏi bắt đầu bằng đúng dòng:  [CAU_HOI]  — nằm một mình trên dòng, có một dòng trống ngay phía trước. TUYỆT ĐỐI không nối "[CAU_HOI]" hay dòng header vào cuối dòng "Loi_Giai:" của câu trước.
 4. Mỗi câu chỉ được có DUY NHẤT một dòng "Dap_An:" và DUY NHẤT một dòng "Loi_Giai:". Hãy suy nghĩ và tự kiểm tra thật kỹ TRƯỚC khi viết, rồi chỉ ghi ra đáp án CUỐI CÙNG mà bạn chắc chắn đúng. Không được ghi "Dap_An:" hoặc "Loi_Giai:" lần thứ hai để tự sửa lại trong cùng một câu.
-5. Mỗi trường viết trên MỘT dòng, đúng dạng "Tên_Trường: giá trị". Tên trường viết y hệt (Loai, Muc_Do, De_Bai, Dap_An, Loi_Giai, So_Dong_Nhap) — không dịch, không đổi, không thêm khoảng trắng trong tên. Nội dung "De_Bai:" viết gọn trên một dòng, KHÔNG xuống dòng giữa chừng và KHÔNG bắt đầu bất kỳ dòng nào bằng "A." … "D." hay bằng tên một trường.
+5. Mỗi trường viết trên MỘT dòng, đúng dạng "Tên_Trường: giá trị". Tên trường viết y hệt (Loai, Muc_Do, De_Bai, Dap_An, Loi_Giai, So_Dong_Nhap) — không dịch, không đổi, không thêm khoảng trắng trong tên. Nội dung "De_Bai:" viết liền trên một dòng, KHÔNG xuống dòng giữa câu — ngoại lệ DUY NHẤT là các ý nhỏ a) b) c)… theo quy tắc 6 — và KHÔNG bắt đầu bất kỳ dòng nào bằng "A." … "D." hay bằng tên một trường.
+6. CÂU CÓ NHIỀU Ý NHỎ (thường là TU_LUAN): dòng "De_Bai:" chỉ ghi phần dẫn chung (dữ kiện, biểu thức, hình vẽ được mô tả…). Sau đó MỖI Ý NHỎ VIẾT TRÊN MỘT DÒNG RIÊNG ngay bên dưới, theo thứ tự, mỗi dòng bắt đầu bằng chữ cái thường + dấu ngoặc đóng + một dấu cách: "a) ", "b) ", "c) ", "d) ", "e) ". TUYỆT ĐỐI KHÔNG dồn nhiều ý vào cùng một dòng (sai: "De_Bai: Cho A = … a) Tính … b) Tìm …"). KHÔNG đánh số ý bằng "1)", "1.", "a.", "A.", "Ý 1:" hay gạch đầu dòng; KHÔNG để dòng trống giữa các ý. Với TU_LUAN, các dòng ý nằm NGAY SAU dòng "De_Bai:" và TRƯỚC dòng "So_Dong_Nhap:". Lời giải cũng trình bày như vậy: dòng "Loi_Giai:" ghi phần chung (nếu có, hoặc ghi "Lời giải từng ý:"), rồi lời giải mỗi ý trên một dòng riêng bắt đầu bằng "a) ", "b) "… đúng thứ tự như đề. Nếu các ý khác mức độ, ghi Muc_Do theo ý khó nhất.
 
 ━━━━━━━━━━━━━━ TỪ VỰNG BẮT BUỘC ━━━━━━━━━━━━━━
 Trường Loai — viết đúng MỘT trong 4 giá trị:  TN  |  DUNG_SAI  |  DIEN_TU  |  TU_LUAN
@@ -378,6 +431,20 @@ Trường Muc_Do — viết đúng MỘT trong 4 giá trị:  Nhan_Biet  |  Thon
   De_Bai: <đề bài yêu cầu học sinh trình bày lời giải>
   So_Dong_Nhap: <số nguyên dương — số dòng kẻ trống chừa cho học sinh làm bài, ví dụ 5 đến 12>
   Loi_Giai: <hướng dẫn chấm / đáp án / các bước giải chi tiết>
+
+• TU_LUAN có nhiều ý nhỏ — mỗi ý MỘT DÒNG RIÊNG (quy tắc 6):
+  [CAU_HOI]
+  Loai: TU_LUAN
+  Muc_Do: <mức độ của ý khó nhất>
+  De_Bai: <phần dẫn chung của câu>
+  a) <yêu cầu ý a>
+  b) <yêu cầu ý b>
+  c) <yêu cầu ý c>
+  So_Dong_Nhap: <số dòng kẻ cho cả câu>
+  Loi_Giai: Lời giải từng ý:
+  a) <lời giải ý a>
+  b) <lời giải ý b>
+  c) <lời giải ý c>
 
 ━━━━━━━━━━━━━━ CÁCH VIẾT CÔNG THỨC TOÁN ━━━━━━━━━━━━━━
 - BẮT BUỘC bọc trong $...$ và viết bằng LaTeX chuẩn cho MỌI công thức có cấu trúc 2 chiều (bên trên/bên dưới một gạch ngang):
@@ -429,6 +496,17 @@ Muc_Do: Van_Dung_Cao
 De_Bai: <đề bài tự luận>
 So_Dong_Nhap: 8
 Loi_Giai: <hướng dẫn chấm và các bước giải chi tiết>
+
+[CAU_HOI]
+Loai: TU_LUAN
+Muc_Do: Van_Dung
+De_Bai: <phần dẫn chung>
+a) <yêu cầu ý a>
+b) <yêu cầu ý b>
+So_Dong_Nhap: 8
+Loi_Giai: Lời giải từng ý:
+a) <lời giải ý a>
+b) <lời giải ý b>
 
 LƯU Ý DÀNH RIÊNG CHO CHATGPT: TUYỆT ĐỐI không bọc kết quả trong khối mã (ba dấu backtick), kể cả khi bạn có thói quen mặc định làm vậy với nội dung dạng danh sách/bảng. Không thêm câu mở đầu kiểu "Dưới đây là đề kiểm tra..." hay câu kết kiểu "Chúc bạn dạy tốt!" — chỉ xuất đúng nội dung đề theo định dạng đã nêu.`,
     example: `=PHAN_1_TRAC_NGHIEM=
@@ -492,7 +570,8 @@ Kết quả của bạn sẽ được một PHẦN MỀM ĐỌC TỰ ĐỘNG, kh
       =PHAN_2_TU_LUAN=       → chỉ chứa câu loại TU_LUAN
 3. Mỗi câu hỏi bắt đầu bằng đúng dòng:  [CAU_HOI]  — nằm một mình trên dòng, có một dòng trống ngay phía trước. TUYỆT ĐỐI không nối "[CAU_HOI]" hay dòng header vào cuối dòng "Loi_Giai:" của câu trước.
 4. Mỗi câu chỉ được có DUY NHẤT một dòng "Dap_An:" và DUY NHẤT một dòng "Loi_Giai:". Hãy suy nghĩ và tự kiểm tra thật kỹ TRƯỚC khi viết, rồi chỉ ghi ra đáp án CUỐI CÙNG mà bạn chắc chắn đúng. Không được ghi "Dap_An:" hoặc "Loi_Giai:" lần thứ hai để tự sửa lại trong cùng một câu.
-5. Mỗi trường viết trên MỘT dòng, đúng dạng "Tên_Trường: giá trị". Tên trường viết y hệt (Loai, Muc_Do, De_Bai, Dap_An, Loi_Giai, So_Dong_Nhap) — không dịch, không đổi, không thêm khoảng trắng trong tên. Nội dung "De_Bai:" viết gọn trên một dòng, KHÔNG xuống dòng giữa chừng và KHÔNG bắt đầu bất kỳ dòng nào bằng "A." … "D." hay bằng tên một trường.
+5. Mỗi trường viết trên MỘT dòng, đúng dạng "Tên_Trường: giá trị". Tên trường viết y hệt (Loai, Muc_Do, De_Bai, Dap_An, Loi_Giai, So_Dong_Nhap) — không dịch, không đổi, không thêm khoảng trắng trong tên. Nội dung "De_Bai:" viết liền trên một dòng, KHÔNG xuống dòng giữa câu — ngoại lệ DUY NHẤT là các ý nhỏ a) b) c)… theo quy tắc 6 — và KHÔNG bắt đầu bất kỳ dòng nào bằng "A." … "D." hay bằng tên một trường.
+6. CÂU CÓ NHIỀU Ý NHỎ (thường là TU_LUAN): dòng "De_Bai:" chỉ ghi phần dẫn chung (dữ kiện, biểu thức, hình vẽ được mô tả…). Sau đó MỖI Ý NHỎ VIẾT TRÊN MỘT DÒNG RIÊNG ngay bên dưới, theo thứ tự, mỗi dòng bắt đầu bằng chữ cái thường + dấu ngoặc đóng + một dấu cách: "a) ", "b) ", "c) ", "d) ", "e) ". TUYỆT ĐỐI KHÔNG dồn nhiều ý vào cùng một dòng (sai: "De_Bai: Cho A = … a) Tính … b) Tìm …"). KHÔNG đánh số ý bằng "1)", "1.", "a.", "A.", "Ý 1:" hay gạch đầu dòng; KHÔNG để dòng trống giữa các ý. Với TU_LUAN, các dòng ý nằm NGAY SAU dòng "De_Bai:" và TRƯỚC dòng "So_Dong_Nhap:". Lời giải cũng trình bày như vậy: dòng "Loi_Giai:" ghi phần chung (nếu có, hoặc ghi "Lời giải từng ý:"), rồi lời giải mỗi ý trên một dòng riêng bắt đầu bằng "a) ", "b) "… đúng thứ tự như đề. Nếu các ý khác mức độ, ghi Muc_Do theo ý khó nhất.
 
 ━━━━━━━━━━━━━━ TỪ VỰNG BẮT BUỘC ━━━━━━━━━━━━━━
 Trường Loai — viết đúng MỘT trong 4 giá trị:  TN  |  DUNG_SAI  |  DIEN_TU  |  TU_LUAN
@@ -536,6 +615,20 @@ Trường Muc_Do — viết đúng MỘT trong 4 giá trị:  Nhan_Biet  |  Thon
   De_Bai: <đề bài yêu cầu học sinh trình bày lời giải>
   So_Dong_Nhap: <số nguyên dương — số dòng kẻ trống chừa cho học sinh làm bài, ví dụ 5 đến 12>
   Loi_Giai: <hướng dẫn chấm / đáp án / các bước giải chi tiết>
+
+• TU_LUAN có nhiều ý nhỏ — mỗi ý MỘT DÒNG RIÊNG (quy tắc 6):
+  [CAU_HOI]
+  Loai: TU_LUAN
+  Muc_Do: <mức độ của ý khó nhất>
+  De_Bai: <phần dẫn chung của câu>
+  a) <yêu cầu ý a>
+  b) <yêu cầu ý b>
+  c) <yêu cầu ý c>
+  So_Dong_Nhap: <số dòng kẻ cho cả câu>
+  Loi_Giai: Lời giải từng ý:
+  a) <lời giải ý a>
+  b) <lời giải ý b>
+  c) <lời giải ý c>
 
 ━━━━━━━━━━━━━━ CÁCH VIẾT CÔNG THỨC TOÁN ━━━━━━━━━━━━━━
 - BẮT BUỘC bọc trong $...$ và viết bằng LaTeX chuẩn cho MỌI công thức có cấu trúc 2 chiều (bên trên/bên dưới một gạch ngang):
@@ -587,6 +680,17 @@ Muc_Do: Van_Dung_Cao
 De_Bai: <đề bài tự luận>
 So_Dong_Nhap: 8
 Loi_Giai: <hướng dẫn chấm và các bước giải chi tiết>
+
+[CAU_HOI]
+Loai: TU_LUAN
+Muc_Do: Van_Dung
+De_Bai: <phần dẫn chung>
+a) <yêu cầu ý a>
+b) <yêu cầu ý b>
+So_Dong_Nhap: 8
+Loi_Giai: Lời giải từng ý:
+a) <lời giải ý a>
+b) <lời giải ý b>
 
 LƯU Ý DÀNH RIÊNG CHO DEEPSEEK: Nếu bạn có bước suy luận trước khi trả lời (thinking/reasoning, ví dụ chế độ DeepThink/R1), phần suy luận đó KHÔNG được lẫn vào nội dung xuất ra cho người dùng — nội dung bạn xuất ra phải bắt đầu ngay bằng dòng "=PHAN_1_TRAC_NGHIEM=", tuyệt đối không có thẻ <think>, không có dòng ghi chú hay tóm tắt suy luận nào khác đứng trước hoặc xen giữa.`,
     example: `=PHAN_1_TRAC_NGHIEM=
@@ -650,7 +754,8 @@ Kết quả của bạn sẽ được một PHẦN MỀM ĐỌC TỰ ĐỘNG, kh
       =PHAN_2_TU_LUAN=       → chỉ chứa câu loại TU_LUAN
 3. Mỗi câu hỏi bắt đầu bằng đúng dòng:  [CAU_HOI]  — nằm một mình trên dòng, có một dòng trống ngay phía trước. TUYỆT ĐỐI không nối "[CAU_HOI]" hay dòng header vào cuối dòng "Loi_Giai:" của câu trước.
 4. Mỗi câu chỉ được có DUY NHẤT một dòng "Dap_An:" và DUY NHẤT một dòng "Loi_Giai:". Hãy suy nghĩ và tự kiểm tra thật kỹ TRƯỚC khi viết, rồi chỉ ghi ra đáp án CUỐI CÙNG mà bạn chắc chắn đúng. Không được ghi "Dap_An:" hoặc "Loi_Giai:" lần thứ hai để tự sửa lại trong cùng một câu.
-5. Mỗi trường viết trên MỘT dòng, đúng dạng "Tên_Trường: giá trị". Tên trường viết y hệt (Loai, Muc_Do, De_Bai, Dap_An, Loi_Giai, So_Dong_Nhap) — không dịch, không đổi, không thêm khoảng trắng trong tên. Nội dung "De_Bai:" viết gọn trên một dòng, KHÔNG xuống dòng giữa chừng và KHÔNG bắt đầu bất kỳ dòng nào bằng "A." … "D." hay bằng tên một trường.
+5. Mỗi trường viết trên MỘT dòng, đúng dạng "Tên_Trường: giá trị". Tên trường viết y hệt (Loai, Muc_Do, De_Bai, Dap_An, Loi_Giai, So_Dong_Nhap) — không dịch, không đổi, không thêm khoảng trắng trong tên. Nội dung "De_Bai:" viết liền trên một dòng, KHÔNG xuống dòng giữa câu — ngoại lệ DUY NHẤT là các ý nhỏ a) b) c)… theo quy tắc 6 — và KHÔNG bắt đầu bất kỳ dòng nào bằng "A." … "D." hay bằng tên một trường.
+6. CÂU CÓ NHIỀU Ý NHỎ (thường là TU_LUAN): dòng "De_Bai:" chỉ ghi phần dẫn chung (dữ kiện, biểu thức, hình vẽ được mô tả…). Sau đó MỖI Ý NHỎ VIẾT TRÊN MỘT DÒNG RIÊNG ngay bên dưới, theo thứ tự, mỗi dòng bắt đầu bằng chữ cái thường + dấu ngoặc đóng + một dấu cách: "a) ", "b) ", "c) ", "d) ", "e) ". TUYỆT ĐỐI KHÔNG dồn nhiều ý vào cùng một dòng (sai: "De_Bai: Cho A = … a) Tính … b) Tìm …"). KHÔNG đánh số ý bằng "1)", "1.", "a.", "A.", "Ý 1:" hay gạch đầu dòng; KHÔNG để dòng trống giữa các ý. Với TU_LUAN, các dòng ý nằm NGAY SAU dòng "De_Bai:" và TRƯỚC dòng "So_Dong_Nhap:". Lời giải cũng trình bày như vậy: dòng "Loi_Giai:" ghi phần chung (nếu có, hoặc ghi "Lời giải từng ý:"), rồi lời giải mỗi ý trên một dòng riêng bắt đầu bằng "a) ", "b) "… đúng thứ tự như đề. Nếu các ý khác mức độ, ghi Muc_Do theo ý khó nhất.
 
 ━━━━━━━━━━━━━━ TỪ VỰNG BẮT BUỘC ━━━━━━━━━━━━━━
 Trường Loai — viết đúng MỘT trong 4 giá trị:  TN  |  DUNG_SAI  |  DIEN_TU  |  TU_LUAN
@@ -694,6 +799,20 @@ Trường Muc_Do — viết đúng MỘT trong 4 giá trị:  Nhan_Biet  |  Thon
   De_Bai: <đề bài yêu cầu học sinh trình bày lời giải>
   So_Dong_Nhap: <số nguyên dương — số dòng kẻ trống chừa cho học sinh làm bài, ví dụ 5 đến 12>
   Loi_Giai: <hướng dẫn chấm / đáp án / các bước giải chi tiết>
+
+• TU_LUAN có nhiều ý nhỏ — mỗi ý MỘT DÒNG RIÊNG (quy tắc 6):
+  [CAU_HOI]
+  Loai: TU_LUAN
+  Muc_Do: <mức độ của ý khó nhất>
+  De_Bai: <phần dẫn chung của câu>
+  a) <yêu cầu ý a>
+  b) <yêu cầu ý b>
+  c) <yêu cầu ý c>
+  So_Dong_Nhap: <số dòng kẻ cho cả câu>
+  Loi_Giai: Lời giải từng ý:
+  a) <lời giải ý a>
+  b) <lời giải ý b>
+  c) <lời giải ý c>
 
 ━━━━━━━━━━━━━━ CÁCH VIẾT CÔNG THỨC TOÁN ━━━━━━━━━━━━━━
 - BẮT BUỘC bọc trong $...$ và viết bằng LaTeX chuẩn cho MỌI công thức có cấu trúc 2 chiều (bên trên/bên dưới một gạch ngang):
@@ -745,6 +864,17 @@ Muc_Do: Van_Dung_Cao
 De_Bai: <đề bài tự luận>
 So_Dong_Nhap: 8
 Loi_Giai: <hướng dẫn chấm và các bước giải chi tiết>
+
+[CAU_HOI]
+Loai: TU_LUAN
+Muc_Do: Van_Dung
+De_Bai: <phần dẫn chung>
+a) <yêu cầu ý a>
+b) <yêu cầu ý b>
+So_Dong_Nhap: 8
+Loi_Giai: Lời giải từng ý:
+a) <lời giải ý a>
+b) <lời giải ý b>
 
 LƯU Ý DÀNH RIÊNG CHO CLAUDE: Không mở đầu câu trả lời bằng bất kỳ câu dẫn nào, kể cả một câu ngắn xác nhận yêu cầu ("Đây là đề kiểm tra bạn cần:" hay tương tự) — xuất thẳng vào nội dung đề. Nếu đề quá dài phải dừng giữa chừng do giới hạn một lượt trả lời, hãy dừng đúng ngay sau một dòng "Loi_Giai:" hoàn chỉnh của một câu (không dừng giữa chừng một câu đang viết dở), để người dùng có thể yêu cầu viết tiếp phần còn lại.`,
     example: `=PHAN_1_TRAC_NGHIEM=
@@ -808,7 +938,8 @@ Kết quả của bạn sẽ được một PHẦN MỀM ĐỌC TỰ ĐỘNG, kh
       =PHAN_2_TU_LUAN=       → chỉ chứa câu loại TU_LUAN
 3. Mỗi câu hỏi bắt đầu bằng đúng dòng:  [CAU_HOI]  — nằm một mình trên dòng, có một dòng trống ngay phía trước. TUYỆT ĐỐI không nối "[CAU_HOI]" hay dòng header vào cuối dòng "Loi_Giai:" của câu trước.
 4. Mỗi câu chỉ được có DUY NHẤT một dòng "Dap_An:" và DUY NHẤT một dòng "Loi_Giai:". Hãy suy nghĩ và tự kiểm tra thật kỹ TRƯỚC khi viết, rồi chỉ ghi ra đáp án CUỐI CÙNG mà bạn chắc chắn đúng. Không được ghi "Dap_An:" hoặc "Loi_Giai:" lần thứ hai để tự sửa lại trong cùng một câu.
-5. Mỗi trường viết trên MỘT dòng, đúng dạng "Tên_Trường: giá trị". Tên trường viết y hệt (Loai, Muc_Do, De_Bai, Dap_An, Loi_Giai, So_Dong_Nhap) — không dịch, không đổi, không thêm khoảng trắng trong tên. Nội dung "De_Bai:" viết gọn trên một dòng, KHÔNG xuống dòng giữa chừng và KHÔNG bắt đầu bất kỳ dòng nào bằng "A." … "D." hay bằng tên một trường.
+5. Mỗi trường viết trên MỘT dòng, đúng dạng "Tên_Trường: giá trị". Tên trường viết y hệt (Loai, Muc_Do, De_Bai, Dap_An, Loi_Giai, So_Dong_Nhap) — không dịch, không đổi, không thêm khoảng trắng trong tên. Nội dung "De_Bai:" viết liền trên một dòng, KHÔNG xuống dòng giữa câu — ngoại lệ DUY NHẤT là các ý nhỏ a) b) c)… theo quy tắc 6 — và KHÔNG bắt đầu bất kỳ dòng nào bằng "A." … "D." hay bằng tên một trường.
+6. CÂU CÓ NHIỀU Ý NHỎ (thường là TU_LUAN): dòng "De_Bai:" chỉ ghi phần dẫn chung (dữ kiện, biểu thức, hình vẽ được mô tả…). Sau đó MỖI Ý NHỎ VIẾT TRÊN MỘT DÒNG RIÊNG ngay bên dưới, theo thứ tự, mỗi dòng bắt đầu bằng chữ cái thường + dấu ngoặc đóng + một dấu cách: "a) ", "b) ", "c) ", "d) ", "e) ". TUYỆT ĐỐI KHÔNG dồn nhiều ý vào cùng một dòng (sai: "De_Bai: Cho A = … a) Tính … b) Tìm …"). KHÔNG đánh số ý bằng "1)", "1.", "a.", "A.", "Ý 1:" hay gạch đầu dòng; KHÔNG để dòng trống giữa các ý. Với TU_LUAN, các dòng ý nằm NGAY SAU dòng "De_Bai:" và TRƯỚC dòng "So_Dong_Nhap:". Lời giải cũng trình bày như vậy: dòng "Loi_Giai:" ghi phần chung (nếu có, hoặc ghi "Lời giải từng ý:"), rồi lời giải mỗi ý trên một dòng riêng bắt đầu bằng "a) ", "b) "… đúng thứ tự như đề. Nếu các ý khác mức độ, ghi Muc_Do theo ý khó nhất.
 
 ━━━━━━━━━━━━━━ TỪ VỰNG BẮT BUỘC ━━━━━━━━━━━━━━
 Trường Loai — viết đúng MỘT trong 4 giá trị:  TN  |  DUNG_SAI  |  DIEN_TU  |  TU_LUAN
@@ -852,6 +983,20 @@ Trường Muc_Do — viết đúng MỘT trong 4 giá trị:  Nhan_Biet  |  Thon
   De_Bai: <đề bài yêu cầu học sinh trình bày lời giải>
   So_Dong_Nhap: <số nguyên dương — số dòng kẻ trống chừa cho học sinh làm bài, ví dụ 5 đến 12>
   Loi_Giai: <hướng dẫn chấm / đáp án / các bước giải chi tiết>
+
+• TU_LUAN có nhiều ý nhỏ — mỗi ý MỘT DÒNG RIÊNG (quy tắc 6):
+  [CAU_HOI]
+  Loai: TU_LUAN
+  Muc_Do: <mức độ của ý khó nhất>
+  De_Bai: <phần dẫn chung của câu>
+  a) <yêu cầu ý a>
+  b) <yêu cầu ý b>
+  c) <yêu cầu ý c>
+  So_Dong_Nhap: <số dòng kẻ cho cả câu>
+  Loi_Giai: Lời giải từng ý:
+  a) <lời giải ý a>
+  b) <lời giải ý b>
+  c) <lời giải ý c>
 
 ━━━━━━━━━━━━━━ CÁCH VIẾT CÔNG THỨC TOÁN ━━━━━━━━━━━━━━
 - BẮT BUỘC bọc trong $...$ và viết bằng LaTeX chuẩn cho MỌI công thức có cấu trúc 2 chiều (bên trên/bên dưới một gạch ngang):
@@ -903,6 +1048,17 @@ Muc_Do: Van_Dung_Cao
 De_Bai: <đề bài tự luận>
 So_Dong_Nhap: 8
 Loi_Giai: <hướng dẫn chấm và các bước giải chi tiết>
+
+[CAU_HOI]
+Loai: TU_LUAN
+Muc_Do: Van_Dung
+De_Bai: <phần dẫn chung>
+a) <yêu cầu ý a>
+b) <yêu cầu ý b>
+So_Dong_Nhap: 8
+Loi_Giai: Lời giải từng ý:
+a) <lời giải ý a>
+b) <lời giải ý b>
 
 LƯU Ý DÀNH RIÊNG CHO GROK: Giữ giọng văn nghiêm túc trong toàn bộ nội dung xuất ra — KHÔNG chêm bình luận hài hước, KHÔNG dùng emoji, KHÔNG thêm ghi chú ngoài lề dù chỉ một dòng. Nếu bạn có nhiều chế độ suy luận, hãy chọn chế độ tuân thủ định dạng nghiêm ngặt nhất.`,
     example: `=PHAN_1_TRAC_NGHIEM=

@@ -253,12 +253,20 @@ private class PageWriter(private val doc: PdfDocument, paper: com.exambuilder.an
             x = left + indent
         }
 
-        fun drawWords(s: String) {
+        fun drawWordsInLine(s: String) {
             for (word in tokenize(s)) {
                 val wWidth = bodyPaint.measureText(word)
                 if (x + wWidth > right && x > left + indent) newline()
                 canvas.drawText(word, x, y, bodyPaint)
                 x += wWidth
+            }
+        }
+
+        // "\n" trong noi dung (cac y a) b) c)) -> xuong dong that.
+        fun drawWords(s: String) {
+            s.split("\n").forEachIndexed { i, paragraph ->
+                if (i > 0) newline()
+                drawWordsInLine(paragraph)
             }
         }
 

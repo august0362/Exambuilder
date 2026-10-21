@@ -21,6 +21,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -36,6 +37,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.exambuilder.android.data.dto.SavedExamDto
 import com.exambuilder.android.viewmodel.LibraryViewModel
+import com.exambuilder.android.BuildConfig
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -141,10 +143,19 @@ fun LibraryScreen(
         item {
             Text("Đồng bộ (GitHub Gist)", style = MaterialTheme.typography.titleMedium)
             Text(
-                "Dùng chung 1 Personal Access Token (quyền \"gist\") và 1 Gist ID cho mọi thiết bị.",
+                if (settings.isSharedGist) "Bạn tự nhận kho đề chung, không cần token. Chỉ chủ kho " +
+                    BuildConfig.SHARED_GIST_OWNER + " cần token để đẩy thay đổi lên."
+                else "Kho riêng: kéo về không cần token; đẩy lên cần token của chủ Gist.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+        }
+
+        item {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text("Tự kéo kho đề khi mở ứng dụng", modifier = Modifier.weight(1f))
+                Switch(checked = settings.autoPull, onCheckedChange = { libraryViewModel.setAutoPull(it) })
+            }
         }
 
         item {
@@ -165,9 +176,9 @@ fun LibraryScreen(
                 ) { Text("⬇️ Kéo về") }
                 OutlinedButton(
                     onClick = { libraryViewModel.push() },
-                    enabled = !syncing,
+                    enabled = settings.hasToken && !syncing,
                     modifier = Modifier.weight(1f)
-                ) { Text("⬆️ Đẩy lên") }
+                ) { Text(if (settings.isSharedGist) "⬆️ Chủ kho đẩy lên" else "⬆️ Đẩy lên") }
             }
         }
 
@@ -220,6 +231,14 @@ fun LibraryScreen(
             item {
                 Card(Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(
+                            onClick = {
+                                libraryViewModel.saveGistId(BuildConfig.SHARED_GIST_ID)
+                                showGistEditor = false
+                            },
+                            enabled = !syncing,
+                            modifier = Modifier.fillMaxWidth()
+                        ) { Text("Dùng kho đề chung mặc định") }
                         Text(
                             "Cách 1 — Tạo Gist mới (thiết bị đầu tiên; cần đã lưu Token):",
                             style = MaterialTheme.typography.bodySmall
@@ -274,8 +293,8 @@ fun LibraryScreen(
 
         item {
             Text(
-                "⚠️ Gist ở dạng \"secret\" nhưng KHÔNG mã hóa: ai có link Gist đều đọc được toàn bộ đề " +
-                    "kèm đáp án. Coi link Gist và token là thông tin nhạy cảm.",
+                if (settings.isSharedGist) "Kho đề chung được chia sẻ cho mọi người, gồm cả đáp án. Giữ token của chủ kho trên thiết bị riêng."
+                else "Gist không mã hóa: người có link có thể đọc đề và đáp án. Giữ token trên thiết bị riêng.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.error
             )

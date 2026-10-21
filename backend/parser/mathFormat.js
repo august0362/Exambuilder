@@ -82,8 +82,9 @@ const SYMBOL_REPLACEMENTS = [
   // --- LaTeX: can bac hai (√ + so nguyen thuan, hoac √(...) neu la bieu thuc) ---
   [/\\sqrt\{([^{}]*)\}/g, (_, x) => '√' + wrapSqrtContent(x)],
 
-  // --- LaTeX: phan so \frac{tu}{mau} -> tu/mau (ngoac lai neu co +/-) ---
-  [/\\frac\{([^{}]*)\}\{([^{}]*)\}/g, (_, num, den) => `${wrapIfExpression(num)}/${wrapIfExpression(den)}`],
+  // --- LaTeX: phan so \frac{tu}{mau} -> tu/mau (ngoac lai neu co +/-); ca
+  // \dfrac/\tfrac (prompt yeu cau AI viet \dfrac) - thieu thi Word in tho "\dfrac{..}{..}" ---
+  [/\\[dt]?frac\{([^{}]*)\}\{([^{}]*)\}/g, (_, num, den) => `${wrapIfExpression(num)}/${wrapIfExpression(den)}`],
 
   // --- LaTeX: bo dau $ bao quanh cong thuc (khong render LaTeX that) ---
   [/\$/g, ''],

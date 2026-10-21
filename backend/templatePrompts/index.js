@@ -84,6 +84,7 @@ function buildTemplatePrompt(input) {
    Dap_An: <Chữ cái A, B, C hoặc D nếu TN; Dung hoặc Sai nếu DUNG_SAI; từ/cụm từ điền nếu DIEN_TU; đáp án ngắn nếu TU_LUAN>
    Loi_Giai: <Lời giải chi tiết từng bước, cách tính toán hoặc giải thích rõ ràng>
    So_Dong_Nhap: <chép chính xác số dòng được chỉ định>
+   Câu có nhiều ý nhỏ: dòng De_Bai chỉ ghi phần dẫn chung, rồi MỖI Ý MỘT DÒNG RIÊNG ngay bên dưới, bắt đầu bằng "a) ", "b) ", "c) "… (không dồn nhiều ý vào một dòng, không dùng "1)" hay "a."). Loi_Giai trình bày tương tự: lời giải mỗi ý một dòng bắt đầu bằng "a) ", "b) "….
 4. QUY TẮC AN TOÀN CHỐNG LỖI CỦA AI:
    - KHÔNG bọc văn bản trong dấu code block markdown.
    - KHÔNG thêm lời chào, lời dẫn (ví dụ: "Dưới đây là đề thi...", "Hy vọng đề thi giúp ích..."), KHÔNG có lời kết.

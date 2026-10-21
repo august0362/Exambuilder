@@ -1,6 +1,8 @@
 const express = require('express');
 const crypto = require('crypto');
 const { getDb } = require('../database');
+const { writeLocalChange } = require('../sync/autoState');
+const autoPush = require('../sync/autoPush');
 const { validateExamPayload } = require('../examValidation');
 const { buildAssetManifest } = require('../templates/assetManifest');
 
@@ -77,6 +79,11 @@ function normalizeBackground(value) {
 router.post('/', async (req, res) => {
   const db = await getDb();
   const { exam_id, title, subject, duration_minutes, school_header, blocks, template_binding } = req.body;
+  const write = req.body._write;
+  if (write != null && (!exam_id || typeof write.client_id !== 'string' ||
+      !/^[\w-]{1,80}$/.test(write.client_id) || !Number.isSafeInteger(write.revision) || write.revision < 1)) {
+    return res.status(400).json({ success: false, error: 'Phien ban luu de khong hop le' });
+  }
   const hasBackground = Object.prototype.hasOwnProperty.call(req.body, 'background');
   let background = null;
   if (hasBackground && req.body.background != null) {
@@ -112,56 +119,71 @@ router.post('/', async (req, res) => {
   if (background) payload.background = background;
 
   try {
-    let examId = exam_id;
-    let existing = null;
-    if (examId) {
-      existing = await db.get('SELECT exam_id, payload_json FROM SAVED_EXAM WHERE exam_id = ?', [examId]);
-    }
+    // Xep hang qua withLock (giong examRoutes / syncRoutes): neu khong, cau lenh
+    // ghi nay co the chay LOT VAO transaction dang mo cua 1 lan dong bo tren
+    // cung ket noi va bi ROLLBACK theo du client da nhan success.
+    const { examId, existing } = await writeLocalChange(db, async () => {
+      let examId = exam_id;
+      let existing = null;
+      if (examId) {
+        existing = await db.get('SELECT exam_id, payload_json FROM SAVED_EXAM WHERE exam_id = ?', [examId]);
+      }
+      if (write) {
+        const previous = await db.get('SELECT revision FROM ARCHIVE_WRITE_VERSION WHERE client_id = ? AND exam_id = ?',
+          [write.client_id, examId]);
+        if (previous && previous.revision >= write.revision) return { examId, existing, changed: false };
+      }
 
-    // Older clients omit the new field. Preserve the existing snapshot in that
-    // case; explicit null is the only request that clears the association.
-    if (existing && !Object.prototype.hasOwnProperty.call(req.body, 'template_binding')) {
-      try {
-        const previous = JSON.parse(existing.payload_json || '{}');
-        if (previous.template_binding) payload.template_binding = previous.template_binding;
-      } catch { /* legacy payload is malformed; exam fields still save */ }
-    }
-    // Tuong tu: client cu khong gui "background" -> giu nen da gan cho de.
-    if (existing && !hasBackground) {
-      try {
-        const previous = JSON.parse(existing.payload_json || '{}');
-        const kept = normalizeBackground(previous.background);
-        if (kept) payload.background = kept;
-      } catch { /* legacy payload is malformed; exam fields still save */ }
-    }
-    if (payload.template_binding?.template_snapshot) {
-      payload.template_binding = {
-        ...payload.template_binding,
-        asset_manifest: buildAssetManifest(payload.template_binding.template_snapshot, payload.template_binding.asset_manifest)
-      };
-    }
-    const payloadJson = JSON.stringify(payload);
+      // Older clients omit the new field. Preserve the existing snapshot in that
+      // case; explicit null is the only request that clears the association.
+      if (existing && !Object.prototype.hasOwnProperty.call(req.body, 'template_binding')) {
+        try {
+          const previous = JSON.parse(existing.payload_json || '{}');
+          if (previous.template_binding) payload.template_binding = previous.template_binding;
+        } catch { /* legacy payload is malformed; exam fields still save */ }
+      }
+      // Tuong tu: client cu khong gui "background" -> giu nen da gan cho de.
+      if (existing && !hasBackground) {
+        try {
+          const previous = JSON.parse(existing.payload_json || '{}');
+          const kept = normalizeBackground(previous.background);
+          if (kept) payload.background = kept;
+        } catch { /* legacy payload is malformed; exam fields still save */ }
+      }
+      if (payload.template_binding?.template_snapshot) {
+        payload.template_binding = {
+          ...payload.template_binding,
+          asset_manifest: buildAssetManifest(payload.template_binding.template_snapshot, payload.template_binding.asset_manifest)
+        };
+      }
+      const payloadJson = JSON.stringify(payload);
 
-    if (existing) {
-      // Khong dung lai deleted_at o day: neu de da bi xoa (tombstone), mot lan
-      // autosave nen background KHONG "hoi sinh" no. Muon lay lai de da xoa thi
-      // dung "Keo ve" (Pull) - cloud thang khi merge.
-      await db.run(
-        `UPDATE SAVED_EXAM
-         SET title = ?, subject = ?, duration_minutes = ?, school_header = ?,
-             payload_json = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%SZ','now')
-         WHERE exam_id = ?`,
-        [String(title).trim(), subject || null, duration_minutes || null, school_header || null, payloadJson, examId]
-      );
-    } else {
-      examId = examId || crypto.randomUUID();
-      await db.run(
-        `INSERT INTO SAVED_EXAM (exam_id, title, subject, duration_minutes, school_header, payload_json)
-         VALUES (?, ?, ?, ?, ?, ?)`,
-        [examId, String(title).trim(), subject || null, duration_minutes || null, school_header || null, payloadJson]
-      );
-    }
-
+      if (existing) {
+        // Khong dung lai deleted_at o day: neu de da bi xoa (tombstone), mot lan
+        // autosave nen background KHONG "hoi sinh" no. Dong bo dung LWW nen de
+        // chi "song lai" khi may khac co ban sua MOI HON lan xoa.
+        await db.run(
+          `UPDATE SAVED_EXAM
+           SET title = ?, subject = ?, duration_minutes = ?, school_header = ?,
+               payload_json = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
+           WHERE exam_id = ?`,
+          [String(title).trim(), subject || null, duration_minutes || null, school_header || null, payloadJson, examId]
+        );
+      } else {
+        examId = examId || crypto.randomUUID();
+        await db.run(
+          `INSERT INTO SAVED_EXAM (exam_id, title, subject, duration_minutes, school_header, payload_json, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%fZ','now'), strftime('%Y-%m-%dT%H:%M:%fZ','now'))`,
+          [examId, String(title).trim(), subject || null, duration_minutes || null, school_header || null, payloadJson]
+        );
+      }
+      if (write) await db.run(
+        `INSERT INTO ARCHIVE_WRITE_VERSION (client_id, exam_id, revision) VALUES (?, ?, ?)
+         ON CONFLICT(client_id, exam_id) DO UPDATE SET revision = excluded.revision`,
+        [write.client_id, examId, write.revision]);
+      return { examId, existing };
+    });
+    autoPush.schedule();
     res.json({ success: true, exam_id: examId, updated: !!existing });
   } catch (err) {
     console.error(err);
@@ -172,16 +194,17 @@ router.post('/', async (req, res) => {
 router.delete('/:exam_id', async (req, res) => {
   const db = await getDb();
   try {
-    const result = await db.run(
+    const result = await writeLocalChange(db, () => db.run(
       `UPDATE SAVED_EXAM
-       SET deleted_at = strftime('%Y-%m-%dT%H:%M:%SZ','now'),
-           updated_at = strftime('%Y-%m-%dT%H:%M:%SZ','now')
+       SET deleted_at = strftime('%Y-%m-%dT%H:%M:%fZ','now'),
+           updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
        WHERE exam_id = ? AND deleted_at IS NULL`,
       [req.params.exam_id]
-    );
+    ));
     if (!result.changes) {
       return res.status(404).json({ success: false, error: 'Khong tim thay de trong kho' });
     }
+    autoPush.schedule();
     res.json({ success: true });
   } catch (err) {
     console.error(err);

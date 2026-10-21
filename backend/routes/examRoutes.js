@@ -178,6 +178,10 @@ router.post('/share', async (req, res) => {
   const db = await getDb();
   try {
     const { exam_id, expires_in_days } = req.body;
+    if (expires_in_days !== undefined && expires_in_days !== null &&
+        (!Number.isFinite(expires_in_days) || expires_in_days < 0 || expires_in_days > 3650)) {
+      return res.status(400).json({ success: false, error: 'expires_in_days khong hop le' });
+    }
     const exam = await db.get(`SELECT exam_id FROM EXAM WHERE exam_id = ?`, [exam_id]);
     if (!exam) return res.status(404).json({ success: false, error: 'De thi khong ton tai' });
 

@@ -14,7 +14,7 @@ describe('database.js (SQLite schema)', () => {
     const rows = await db.all("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name");
     const tableNames = rows.map(r => r.name).sort();
     expect(tableNames).toEqual([
-      'EXAM', 'EXAM_SHARE', 'LLM_MODEL', 'LLM_SETTINGS', 'QUESTION', 'QUESTION_BLOCK', 'QUESTION_OPTION',
+      'ARCHIVE_WRITE_VERSION', 'AUTO_SYNC_STATE', 'EXAM', 'EXAM_SHARE', 'LLM_MODEL', 'LLM_SETTINGS', 'QUESTION', 'QUESTION_BLOCK', 'QUESTION_OPTION',
       'RESOURCE_DOCUMENT', 'RESOURCE_HISTORY', 'RESOURCE_SECTION', 'SAVED_EXAM', 'SYNC_SETTINGS', 'TEMPLATE', 'TEMPLATE_VERSION'
     ]);
   });

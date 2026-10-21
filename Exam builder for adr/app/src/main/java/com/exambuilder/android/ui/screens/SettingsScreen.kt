@@ -35,11 +35,12 @@ import com.exambuilder.android.data.AppSettingsStore
 import com.exambuilder.android.ui.theme.APP_THEMES
 import com.exambuilder.android.ui.theme.AppTheme
 import kotlinx.coroutines.launch
+import com.exambuilder.android.viewmodel.AppUpdateViewModel
 
 private val FONT_STEPS = listOf(0.9f to "Nhỏ", 1.0f to "Vừa", 1.15f to "Lớn", 1.3f to "Rất lớn")
 
 @Composable
-fun SettingsScreen(store: AppSettingsStore) {
+fun SettingsScreen(store: AppSettingsStore, updateViewModel: AppUpdateViewModel) {
     val settings by store.settings.collectAsStateWithLifecycle(initialValue = AppSettings())
     val scope = rememberCoroutineScope()
 
@@ -47,6 +48,8 @@ fun SettingsScreen(store: AppSettingsStore) {
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(18.dp)
     ) {
+        AppUpdateCard(updateViewModel)
+        HorizontalDivider()
         Text("Giao diện", style = MaterialTheme.typography.titleLarge)
 
         Text("Chủ đề màu", style = MaterialTheme.typography.titleMedium)

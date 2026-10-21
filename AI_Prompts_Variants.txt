@@ -26,7 +26,7 @@ Cú pháp mỗi khối:
 LABEL: Gemini (thường)
 HINT: Dán vào Gemini bản chat thường tại gemini.google.com hoặc app Gemini trên điện thoại (khác với tab "Tự động" trong ExamBuilder — tab đó gọi Gemini qua API ngay trong phần mềm).
 TIP:
-LƯU Ý DÀNH RIÊNG CHO GEMINI: Nếu câu trả lời có nguy cơ bị dừng giữa chừng do giới hạn độ dài, hãy ưu tiên viết trọn vẹn từng câu hỏi (đủ cả "Dap_An:" và "Loi_Giai:") rồi mới dừng, không bỏ dở một câu đang viết. Nếu bạn tự chèn dấu ** hoặc gạch đầu dòng markdown, hãy xuất lại không dùng markdown.
+LƯU Ý DÀNH RIÊNG CHO GEMINI: Nếu câu trả lời có nguy cơ bị dừng giữa chừng do giới hạn độ dài, hãy ưu tiên viết trọn vẹn từng câu hỏi (đủ cả "Dap_An:" và "Loi_Giai:") rồi mới dừng, không bỏ dở một câu đang viết. Nếu bạn tự chèn dấu ** hoặc gạch đầu dòng markdown, hãy xuất lại không dùng markdown. Gemini hay gộp các ý nhỏ của một câu thành một đoạn văn liền — KHÔNG làm vậy: với câu nhiều ý, BẮT BUỘC xuống dòng trước mỗi ý "a) ", "b) ", "c) "… cả trong đề bài lẫn lời giải (quy tắc 6).
 EXAMPLE_TOPIC: Toán 6 - Số nguyên
 EXAMPLE:
 =PHAN_1_TRAC_NGHIEM=
@@ -79,7 +79,7 @@ Loi_Giai: Độ sâu ban đầu: -45m. Sau khi lên 20m: -45 + 20 = -25m. Sau kh
 LABEL: Gemini Pro
 HINT: Dán vào Gemini Pro (gói Gemini Advanced / Google One AI Premium) tại gemini.google.com, chọn model 2.5 Pro (hoặc bản Pro mới nhất) — mạnh hơn bản Gemini thường ở khả năng suy luận và độ dài ngữ cảnh.
 TIP:
-LƯU Ý DÀNH RIÊNG CHO GEMINI PRO: Nhờ cửa sổ ngữ cảnh lớn, có thể dán kèm nguyên văn nội dung sách/bài giảng vào cuối prompt này làm tư liệu tham khảo ngay trong cùng một lượt hỏi. Nếu bạn bật chế độ suy luận sâu (Thinking/Deep Think), CHỈ xuất ra đáp án và lời giải cuối cùng theo đúng định dạng — không in ra các bước suy nghĩ trung gian, không có thẻ hay mục nào khác đứng trước dòng "=PHAN_1_TRAC_NGHIEM=".
+LƯU Ý DÀNH RIÊNG CHO GEMINI PRO: Nhờ cửa sổ ngữ cảnh lớn, có thể dán kèm nguyên văn nội dung sách/bài giảng vào cuối prompt này làm tư liệu tham khảo ngay trong cùng một lượt hỏi. Nếu bạn bật chế độ suy luận sâu (Thinking/Deep Think), CHỈ xuất ra đáp án và lời giải cuối cùng theo đúng định dạng — không in ra các bước suy nghĩ trung gian, không có thẻ hay mục nào khác đứng trước dòng "=PHAN_1_TRAC_NGHIEM=". Gemini hay gộp các ý nhỏ của một câu thành một đoạn văn liền — KHÔNG làm vậy: với câu nhiều ý, BẮT BUỘC xuống dòng trước mỗi ý "a) ", "b) ", "c) "… cả trong đề bài lẫn lời giải (quy tắc 6).
 EXAMPLE_TOPIC: Sinh học 8 - Hệ tuần hoàn
 EXAMPLE:
 =PHAN_1_TRAC_NGHIEM=

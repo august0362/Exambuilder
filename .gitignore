@@ -1,5 +1,17 @@
 node_modules/
 backend/exam.db
+*.db
+*.db-wal
+*.db-shm
+*.db-journal
+*.sqlite
+*.sqlite3
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
+*.sqlite3-journal
+*.sqlite3-wal
+*.sqlite3-shm
 coverage/
 resources/models/
 
@@ -10,3 +22,36 @@ prompt_update.txt
 
 # Anh nen giao vien tai len (du lieu nguoi dung, giong exam.db)
 resources/backgrounds/
+resources/uploads/
+
+# Local credentials, signing keys and machine configuration
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.jks
+*.keystore
+keystore.properties
+local.properties
+.claude/
+.codex/
+.idea/
+.vscode/
+
+# Build output, caches and temporary files (keep the Gradle wrapper)
+build/
+dist/
+.gradle/
+.cache/
+*.apk
+*.aab
+*.log
+*.tmp
+*.temp
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Local reference image, not used by the app
+/diagram (1).png

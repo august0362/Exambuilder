@@ -238,4 +238,10 @@ describe('formatMathSymbols', () => {
     expect(formatMathSymbols('(2x - 1)/3 - (x - 2)/2 >= (x + 1)/6'))
       .toBe('(2x - 1)/3 - (x - 2)/2 ≥ (x + 1)/6');
   });
+  // [Da sua] Prompt yeu cau AI viet \dfrac nhung latexToPlainText chi hieu \frac
+  // -> file Word in tho "\dfrac{2x + 5}{x - 1}".
+  test('TC-MF-30: latexToPlainText lam phang ca dfrac va tfrac nhu frac (xuat Word)', () => {
+    expect(latexToPlainText('$A = \\dfrac{2x + 5}{x - 1}$ với x ≠ 1')).toBe('A = (2x + 5)/(x - 1) với x ≠ 1');
+    expect(latexToPlainText('$\\tfrac{1}{2}$')).toBe('1/2');
+  });
 });

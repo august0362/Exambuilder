@@ -73,7 +73,7 @@ test('TC-E2E-01: PC tao de -> Push (tao Gist) -> Android nhap Gist ID -> Pull th
   let pc = makeDevice(pcDbPath);
   const saved = await request(pc.app).post('/api/archive').send({ title: 'De cua PC', blocks: BLOCKS });
   const examId = saved.body.exam_id;
-  await request(pc.app).post('/api/sync/settings').send({ github_token: 'tok_pc' });
+  await request(pc.app).post('/api/sync/settings').send({ github_token: 'tok_pc', gist_id: '' });
   const push1 = await request(pc.app).post('/api/sync/push');
   expect(push1.status).toBe(200);
   expect(push1.body.gist_id).toBe('g-e2e');
@@ -119,7 +119,7 @@ test('TC-E2E-02: chu de mau dong bo qua Gist - "lan doi gan nhat thang"', async 
   // --- PC dat theme "winter" roi Push ---
   let pc = makeDevice(pcDbPath);
   await request(pc.app).post('/api/archive').send({ title: 'De', blocks: BLOCKS });
-  await request(pc.app).post('/api/sync/settings').send({ github_token: 'tok_pc' });
+  await request(pc.app).post('/api/sync/settings').send({ github_token: 'tok_pc', gist_id: '' });
   const push1 = await request(pc.app).post('/api/sync/push').send({ theme: { id: 'winter', updated_at: T1 } });
   expect(push1.status).toBe(200);
   expect(push1.body.theme).toEqual({ id: 'winter', updated_at: T1 });

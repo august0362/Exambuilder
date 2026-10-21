@@ -125,7 +125,11 @@ function analyzeTemplateExport(input) {
   return { options, estimatedPages, warnings, slotCount: slots.length, metadata };
 }
 
-function p(text, options = {}) { return new Paragraph({ children: [new TextRun({ text: safeString(text), bold: Boolean(options.bold) })], spacing: { after: options.after ?? 120 }, heading: options.heading }); }
+// "\n" trong noi dung (cac y a) b) c)) -> ngat dong that trong cung doan.
+function p(text, options = {}) {
+  const children = safeString(text).split(/\r?\n/).map((line, i) => new TextRun({ text: line, bold: Boolean(options.bold), break: i > 0 ? 1 : undefined }));
+  return new Paragraph({ children, spacing: { after: options.after ?? 120 }, heading: options.heading });
+}
 function label(slot, number) { return `Câu ${number} (${safeString(slot.points, 20)} điểm).`; }
 
 function answerSpaceChildren(space = {}) {
