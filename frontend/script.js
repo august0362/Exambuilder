@@ -4,6 +4,7 @@ import { formatMathSymbols, latexToPlainText } from '/parser/mathFormat.js';
 import { generateExamCodes, shuffleAllMCQOptions } from '/parser/examCodeGenerator.js';
 import { redactExamForStudent } from '/parser/examRedaction.js';
 import { AI_PROMPT_VARIANTS } from './promptVariants.js';
+import { createAutoPull } from './autoPull.js';
 
 // Ve noi dung toan hoc: MOI cau truc 2 chieu (can, phan so, can bac n, he
 // phuong trinh, tich phan...) deu duoc quy ve $...$ / $$...$$ LaTeX roi giao
@@ -2584,9 +2585,17 @@ const changeGistPanel = document.getElementById('changeGistPanel');
 const createGistBtn = document.getElementById('createGistBtn');
 const syncPushBtn = document.getElementById('syncPushBtn');
 const syncPullBtn = document.getElementById('syncPullBtn');
+const autoPullOnOpenInput = document.getElementById('autoPullOnOpen');
 
 let syncHasToken = false;
 let syncGistId = '';
+let syncDefaultGistId = '';
+let syncSharedOwner = '';
+let syncIsShared = false;
+let syncInFlight = false;
+let autoPullEnabled = true;
+try { autoPullEnabled = localStorage.getItem('exambuilder-auto-pull') !== 'false'; } catch { /* mac dinh bat */ }
+autoPullOnOpenInput.checked = autoPullEnabled;
 
 function setSyncStatus(msg, kind) {
   syncStatusEl.textContent = msg || '';
@@ -2598,12 +2607,18 @@ function renderSyncState() {
   const masked = tokenStateLabel.dataset.masked;
   tokenStateLabel.textContent = syncHasToken
     ? (masked ? `✅ Đã lưu (${masked})` : '✅ Đã lưu')
-    : '⚠️ Chưa có';
+    : (syncIsShared ? 'Không cần để kéo kho chung' : 'Chưa có — chỉ cần khi đẩy lên');
   tokenStateLabel.classList.toggle('is-set', syncHasToken);
   gistStateLabel.textContent = syncGistId ? `✅ ${syncGistId}` : '⚠️ Chưa có';
   gistStateLabel.classList.toggle('is-set', !!syncGistId);
   // "Tạo Gist ID mới" cần token trước.
-  createGistBtn.disabled = !syncHasToken;
+  createGistBtn.disabled = !syncHasToken || syncInFlight;
+  syncPushBtn.disabled = !syncHasToken || syncInFlight;
+  syncPullBtn.disabled = !syncGistId || syncInFlight;
+  syncPushBtn.textContent = syncIsShared ? '⬆️ Chủ kho đẩy lên' : '⬆️ Đẩy lên (Push)';
+  document.getElementById('syncDescription').textContent = syncIsShared
+    ? `Tự nhận kho đề chung, không cần token. Chỉ chủ kho ${syncSharedOwner} cần token để đẩy thay đổi lên.`
+    : 'Kho riêng: kéo về không cần token; đẩy lên cần token của chủ Gist.';
 }
 
 async function loadSyncSettings() {
@@ -2613,13 +2628,18 @@ async function loadSyncSettings() {
     if (!data.success) return;
     syncHasToken = !!data.has_token;
     syncGistId = data.gist_id || '';
+    syncDefaultGistId = data.default_gist_id || '';
+    syncSharedOwner = data.shared_gist_owner || '';
+    syncIsShared = !!data.is_shared;
     if (data.has_token && data.masked_token) tokenStateLabel.dataset.masked = data.masked_token;
     renderSyncState();
     syncMetaEl.textContent = data.last_synced_at
       ? `Đồng bộ lần cuối: ${formatDateShort(data.last_synced_at)}`
       : 'Chưa đồng bộ lần nào.';
+    return data;
   } catch {
     // giu nguyen trang thai hien tai
+    return null;
   }
 }
 
@@ -2696,14 +2716,17 @@ createGistBtn.addEventListener('click', async () => {
   } catch (err) {
     setSyncStatus('❌ ' + err.message, 'error');
   } finally {
-    createGistBtn.disabled = false;
+    renderSyncState();
   }
 });
 
-async function runSync(direction) {
-  syncPushBtn.disabled = true;
-  syncPullBtn.disabled = true;
-  setSyncStatus(direction === 'pull' ? '⏳ Đang kéo về từ Gist...' : '⏳ Đang đẩy lên Gist...', '');
+async function runSync(direction, { automatic = false } = {}) {
+  if (syncInFlight) return false;
+  syncInFlight = true;
+  renderSyncState();
+  setSyncStatus(direction === 'pull'
+    ? (automatic ? '⏳ Đang tự động kéo kho đề về...' : '⏳ Đang kéo về từ Gist...')
+    : '⏳ Đang đẩy lên Gist...', '');
   try {
     const res = await fetch(`/api/sync/${direction}`, {
       method: 'POST',
@@ -2722,13 +2745,44 @@ async function runSync(direction) {
     );
     await loadArchiveList();
     await loadSyncSettings();
+    return true;
   } catch (err) {
     setSyncStatus('❌ ' + err.message, 'error');
+    return false;
   } finally {
-    syncPushBtn.disabled = false;
-    syncPullBtn.disabled = false;
+    syncInFlight = false;
+    renderSyncState();
   }
 }
 
 syncPullBtn.addEventListener('click', () => runSync('pull'));
 syncPushBtn.addEventListener('click', () => runSync('push'));
+
+const requestAutoPull = createAutoPull({
+  loadSettings: loadSyncSettings,
+  pull: () => runSync('pull', { automatic: true }),
+  isEnabled: () => autoPullEnabled,
+  isOnline: () => navigator.onLine !== false,
+  isBusy: () => syncInFlight
+});
+
+autoPullOnOpenInput.addEventListener('change', () => {
+  autoPullEnabled = autoPullOnOpenInput.checked;
+  try { localStorage.setItem('exambuilder-auto-pull', String(autoPullEnabled)); } catch { /* chi luu trong phien */ }
+  if (autoPullEnabled) requestAutoPull({ force: true }).catch(() => {});
+});
+document.getElementById('useSharedGistBtn').addEventListener('click', async () => {
+  try {
+    if (!syncDefaultGistId) await loadSyncSettings();
+    if (!syncDefaultGistId) throw new Error('Chưa đọc được cấu hình kho chung.');
+    await postSyncSettings({ gist_id: syncDefaultGistId });
+    changeGistPanel.classList.add('form-hidden');
+    await loadSyncSettings();
+    if (autoPullEnabled) await requestAutoPull({ force: true });
+  } catch (err) { setSyncStatus('❌ ' + err.message, 'error'); }
+});
+window.addEventListener('online', () => requestAutoPull().catch(() => {}));
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') requestAutoPull().catch(() => {});
+});
+requestAutoPull().catch(() => {});

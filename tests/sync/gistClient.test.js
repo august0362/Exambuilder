@@ -1,4 +1,5 @@
 const http = require('http');
+const { DEFAULT_GIST_ID, SHARED_GIST_OWNER } = require('../../backend/sync/sharedLibrary');
 
 // Mock GitHub Gist API cuc bo — kiem tra wiring HTTP that (URL, header, parse
 // JSON), khong chi mock module. GITHUB_API_BASE tro gistClient toi server nay.
@@ -6,6 +7,7 @@ let server;
 let baseUrl;
 let lastRequest;
 let gistStore;
+let requestHistory;
 
 beforeAll(done => {
   server = http.createServer((req, res) => {
@@ -13,6 +15,7 @@ beforeAll(done => {
     req.on('data', c => (body += c));
     req.on('end', () => {
       lastRequest = { method: req.method, url: req.url, headers: req.headers, body };
+      requestHistory.push(lastRequest);
       const send = (code, obj) => {
         res.writeHead(code, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify(obj));
@@ -23,10 +26,13 @@ beforeAll(done => {
         gistStore = { id: 'gist-xyz', html_url: 'https://gist.github.com/u/gist-xyz', files: parsed.files };
         return send(201, gistStore);
       }
-      if (req.method === 'GET' && req.url === '/gists/gist-xyz') {
+      if (req.method === 'GET' && (req.url === '/gists/gist-xyz' || req.url === `/gists/${DEFAULT_GIST_ID}`)) {
         return send(200, gistStore);
       }
-      if (req.method === 'PATCH' && req.url === '/gists/gist-xyz') {
+      if (req.method === 'GET' && req.url === '/user') {
+        return send(200, { login: req.headers.authorization === 'Bearer owner-token' ? SHARED_GIST_OWNER : 'other-person' });
+      }
+      if (req.method === 'PATCH' && (req.url === '/gists/gist-xyz' || req.url === `/gists/${DEFAULT_GIST_ID}`)) {
         const parsed = JSON.parse(body);
         gistStore.files = { ...gistStore.files, ...parsed.files };
         return send(200, gistStore);
@@ -55,6 +61,7 @@ afterAll(done => {
 beforeEach(() => {
   gistStore = undefined;
   lastRequest = undefined;
+  requestHistory = [];
   jest.resetModules();
 });
 
@@ -102,4 +109,42 @@ test('TC-GC-05: 404 -> loi "Khong tim thay Gist"', async () => {
 test('TC-GC-06: 401 -> loi "GitHub tu choi token"', async () => {
   const client = freshClient();
   await expect(client.getLibrary('tok', 'badtoken')).rejects.toThrow(/401/);
+});
+
+test('kho chung doc an danh ngay ca khi co token sai/het han', async () => {
+  const client = freshClient();
+  gistStore = { id: DEFAULT_GIST_ID, files: { 'exambuilder-library.json': { content: '{"exams":[]}' } } };
+  expect(await client.getLibrary('', DEFAULT_GIST_ID)).toBe('{"exams":[]}');
+  expect(lastRequest.headers.authorization).toBeUndefined();
+  await client.getLibrary('expired-token', DEFAULT_GIST_ID);
+  expect(lastRequest.headers.authorization).toBeUndefined();
+});
+
+test('chu kho duoc day len Gist chung sau khi xac minh tai khoan', async () => {
+  const client = freshClient();
+  gistStore = { id: DEFAULT_GIST_ID, files: {} };
+  await client.updateGist('owner-token', DEFAULT_GIST_ID, '{"exams":[]}');
+  expect(requestHistory.map(r => [r.method, r.url])).toEqual([
+    ['GET', '/user'], ['PATCH', `/gists/${DEFAULT_GIST_ID}`]
+  ]);
+  expect(lastRequest.headers.authorization).toBe('Bearer owner-token');
+});
+
+test('tai khoan khac bi tu choi truoc khi PATCH, khong thay noi dung Gist', async () => {
+  const client = freshClient();
+  const existing = { id: DEFAULT_GIST_ID, files: { 'exambuilder-library.json': { content: 'original' } } };
+  gistStore = existing;
+  await expect(client.updateGist('someone-token', DEFAULT_GIST_ID, 'changed')).rejects.toMatchObject({ status: 403 });
+  expect(requestHistory.some(r => r.method === 'PATCH')).toBe(false);
+  expect(gistStore).toBe(existing);
+});
+
+test('khong gui token hay tai raw_url ngoai Gist GitHub', async () => {
+  const client = freshClient();
+  gistStore = { id: DEFAULT_GIST_ID, files: { 'exambuilder-library.json': {
+    truncated: true, raw_url: 'https://untrusted.example/collect'
+  } } };
+  await expect(client.getLibrary('owner-token', DEFAULT_GIST_ID)).rejects.toThrow(/Duong dan/);
+  expect(requestHistory).toHaveLength(1);
+  expect(lastRequest.headers.authorization).toBeUndefined();
 });

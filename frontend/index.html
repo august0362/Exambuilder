@@ -594,10 +594,8 @@
     <details class="sync-details" id="syncDetails">
       <summary>☁️ Đồng bộ sang thiết bị khác (GitHub Gist)</summary>
       <div class="sync-details-body">
-        <p class="hint">
-          Dùng chung 1 <strong>Personal Access Token</strong> (chỉ cần quyền <code>gist</code>) và 1
-          <strong>Gist ID</strong> cho mọi thiết bị.
-        </p>
+        <p class="hint" id="syncDescription">Tự nhận kho đề chung, không cần token. Chỉ chủ kho cần token để đẩy thay đổi lên.</p>
+        <label class="hint"><input type="checkbox" id="autoPullOnOpen" checked /> Tự kéo kho đề khi mở ứng dụng hoặc có mạng trở lại</label>
 
         <div class="sync-status-rows">
           <div class="sync-status-row">
@@ -630,6 +628,7 @@
         </div>
 
         <div class="sync-subpanel form-hidden" id="changeGistPanel">
+          <button id="useSharedGistBtn" type="button" class="secondary-btn">Dùng kho đề chung mặc định</button>
           <p class="hint"><strong>Cách 1</strong> — Tạo Gist mới (thiết bị đầu tiên; cần đã lưu Token):</p>
           <button id="createGistBtn" type="button" class="secondary-btn">🆕 Tạo Gist ID mới</button>
           <p class="hint"><strong>Cách 2</strong> — Dùng Gist ID đã có (copy từ thiết bị khác):</p>

@@ -1,12 +1,12 @@
 # Phát hành cập nhật Android
 
-Nguồn cập nhật của bản 1.2.0 là `august0362/Exambuilder`. App đọc latest **stable release**, tải file `android-update.json`, so sánh `versionCode` rồi mới hiện nút cập nhật. Tên tag không quyết định phiên bản Android; `versionCode` trong APK và JSON phải khớp.
+Nguồn cập nhật là `august0362/Exambuilder`. Bản hiện tại: **1.3.0**, code **4**. App đọc latest **stable release**, tải file `android-update.json`, so sánh `versionCode` rồi mới hiện nút cập nhật. Tên tag không quyết định phiên bản Android; `versionCode` trong APK và JSON phải khớp.
 
 Ngày 21/10/2026, kho và [release Android 1.2.0](https://github.com/august0362/Exambuilder/releases/tag/android-v1.2.0) đã công khai. Đã xác minh API latest, metadata và APK truy cập không cần đăng nhập; kích thước và SHA-256 APK tải về khớp thông tin phát hành. Tải APK tại [ExamBuilder.apk](https://github.com/august0362/Exambuilder/releases/download/android-v1.2.0/ExamBuilder.apk).
 
 ## Tạo gói phát hành
 
-1. Tăng `versionCode` và đổi `versionName` trong `app/build.gradle.kts` cho mỗi bản mới. Bản hiện tại là code **3**, tên **1.2.0**.
+1. Tăng `versionCode` và đổi `versionName` trong `app/build.gradle.kts` cho mỗi bản mới. Bản hiện tại là code **4**, tên **1.3.0**. File `../resources/shared-library.json` phải có trong checkout để Gradle nhúng cấu hình nguồn kho đề chung.
 2. Giữ nguyên `applicationId` và khóa ký release đang dùng. `keystore.properties` và `.jks` chỉ giữ trên máy, không tải lên GitHub.
 3. Từ thư mục Android, chạy Gradle 8.14.3 với JDK đã cài:
 
@@ -22,8 +22,8 @@ Ngày 21/10/2026, kho và [release Android 1.2.0](https://github.com/august0362/
 ## Đưa lên GitHub
 
 1. Đảm bảo kho `august0362/Exambuilder` và Releases có thể đọc **không cần đăng nhập**. Nếu mã nguồn cần giữ riêng tư, dùng một kho công khai riêng chỉ chứa Releases và build với `-PupdateRepository=owner/public-updates-repo`. Các thiết bị đã cài bản cũ vẫn đọc nguồn được nhúng trong bản cũ nên cần duy trì nguồn đó hoặc cài thủ công bản chuyển nguồn.
-2. Commit mã nguồn cần phát hành. Trên GitHub, tạo release (ví dụ tag `android-v1.2.0`) từ commit tương ứng.
-3. Đính kèm **đúng hai file từ cùng lần build**, dùng tên gốc `ExamBuilder.apk` và `android-update.json`. Có thể dùng [RELEASE_NOTES_1.2.0.md](RELEASE_NOTES_1.2.0.md) làm mô tả.
+2. Commit mã nguồn cần phát hành. Trên GitHub, tạo release (ví dụ tag `android-v1.3.0`) từ commit tương ứng.
+3. Đính kèm **đúng hai file từ cùng lần build**, dùng tên gốc `ExamBuilder.apk` và `android-update.json`. Có thể dùng [RELEASE_NOTES_1.3.0.md](RELEASE_NOTES_1.3.0.md) làm mô tả.
 4. Xuất bản stable release và đặt làm **latest**. Draft/prerelease không được ứng dụng nhận; release mới nhất cần chứa hai file Android trên, kể cả khi cùng kho phát hành cả web.
 5. Kiểm tra `https://api.github.com/repos/august0362/Exambuilder/releases/latest` và các URL tải asset có thể mở không cần token. 404 có thể do kho riêng tư, sai địa chỉ hoặc chưa có release.
 
@@ -41,4 +41,4 @@ Ngày 21/10/2026, kho và [release Android 1.2.0](https://github.com/august0362/
 
 Kiểm thử tự động bao gồm bộ đọc metadata, thứ tự phiên bản, bản ổn định, giới hạn kích thước và URL nguồn. Trên thiết bị, kiểm tra: mở app ngoại tuyến; bật mạng; bấm kiểm tra; tải bản có code cao hơn; cấp/từ chối quyền cài; cài cập nhật và mở lại kho đề. Thử file có SHA sai hoặc khóa ký khác và xác nhận app từ chối trước khi cài.
 
-Để kiểm thử từ bản 1.2.0 cần xuất bản APK có code lớn hơn 3; xuất bản lại code 3 sẽ không hiện cập nhật trên máy đã cài code 3.
+Máy dùng bản 1.2.0 (code 3) có thể nhận bản 1.3.0 (code 4) qua nút cập nhật. Để kiểm thử lần tiếp theo từ bản 1.3.0 cần APK có code lớn hơn 4; xuất bản lại code 4 sẽ không hiện cập nhật trên máy đã cài code 4.

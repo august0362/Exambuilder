@@ -5,7 +5,7 @@ Native Kotlin + Jetpack Compose companion app to the web ExamBuilder (`../fronte
 ## Stack
 
 - Kotlin, Jetpack Compose (Material 3), Navigation-Compose
-- `minSdk 26` (Android 8.0) / `targetSdk 36`; bản hiện tại **1.2.0** (`versionCode 3`)
+- `minSdk 26` (Android 8.0) / `targetSdk 36`; bản hiện tại **1.3.0** (`versionCode 4`)
 - No third-party PDF library — PDF export uses the platform `android.graphics.pdf.PdfDocument` API
 
 ## File tree
@@ -71,9 +71,9 @@ Mọi đề soạn trên máy được **tự động lưu** vào `filesDir/exam
 | **⬆️ Đẩy lên** | máy → Gist | `merge(local, cloud)` — giữ bản mới hơn; tự tạo Gist nếu chưa có Gist ID |
 | **⬇️ Kéo về** | Gist → máy | `merge(cloud, local)` — giữ bản mới hơn; lấy đề từ thiết bị khác |
 
-Cấu hình trong tab "Kho đề" (Token & Gist ID khóa sau khi lưu, đổi qua nút **🔑 Thay đổi Token** /
-**🆔 Thay đổi Gist ID**): thiết bị đầu tiên bấm **🆕 Tạo Gist ID mới**; thiết bị sau dán **cùng
-Token + cùng Gist ID** với bên web PC rồi **⬇️ Kéo về**.
+Từ bản **1.3.0**, máy mới có sẵn Gist ID `282c661c4f3d20d64446358973bb03e7` của **TranViet30** và bật **Tự kéo kho đề khi mở ứng dụng**. App chờ kho cục bộ tải xong, rồi kéo khi có Internet; khi đang mở mà có mạng trở lại cũng thử kéo. Không cần token để đọc kho chung, kể cả khi đã lưu một token hết hạn. Những lần tự kéo gần nhau cách tối thiểu 60 giây; nút **Kéo về** vẫn chạy thủ công.
+
+Chỉ token của **TranViet30** được đẩy lên kho chung; ứng dụng xác minh tài khoản trước khi ghi và GitHub kiểm tra quyền ghi Gist. Không nhúng token trong APK hoặc mã nguồn. Máy đã cấu hình Gist riêng tiếp tục dùng ID đó; nút **Dùng kho đề chung mặc định** trong phần thay đổi Gist ID đưa về kho chung. Có thể tắt tự kéo hoặc tự tạo Gist riêng bằng token của chính mình. Cấu hình nguồn chung nằm ở [../resources/shared-library.json](../resources/shared-library.json), được web/PC và Gradle Android cùng đọc. Chi tiết vận hành: [../documents/SHARED_LIBRARY.md](../documents/SHARED_LIBRARY.md).
 
 > ⚠️ **Bảo mật:** token lưu **plaintext** trong DataStore; Gist secret **không mã hóa** — ai có link Gist đều đọc được toàn bộ đề kèm đáp án. Xem chi tiết ở `../documents/README.md` mục 4.3.
 
@@ -130,5 +130,5 @@ Mỗi GitHub Release cần **cả `ExamBuilder.apk` và `android-update.json`** 
 ## Known gaps (scaffold, not a finished app)
 
 - Persistence: kho đề đã được ghi ra file JSON (`ExamArchiveRepository`), nhưng đề **đang soạn dở** vẫn chỉ nằm trong `ExamViewModel` cho tới khi autosave chạy (debounce 1.2s) — chưa khôi phục lại đúng con trỏ soạn khi kill app giữa chừng. Không dùng Room (dữ liệu phi quan hệ, khớp 1:1 với file Gist nên JSON gọn hơn).
-- Đồng bộ Gist là **thủ công 2 nút** (Đẩy lên / Kéo về), không tự chạy nền; không giải quyết xung đột theo dòng — giữ cả đề có thời gian cập nhật mới hơn.
+- Pull tự động chạy khi app mở/có mạng, không chạy dịch vụ định kỳ khi app đã đóng. Push vẫn thủ công; không giải quyết xung đột theo dòng — giữ cả đề có thời gian cập nhật mới hơn.
 - `PdfExporter` does plain-text pagination (no rich text, no stacked-fraction rendering equivalent to the web app's `mathFraction.js`). Good enough for a first export, not a pixel-match of the web PDF.

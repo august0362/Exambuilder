@@ -6,12 +6,37 @@ function nowIso() {
   return new Date().toISOString();
 }
 
+// Moc thoi gian -> epoch ms. Chap nhan ISO 8601 (co/khong ms, Z hoac +07:00)
+// va dinh dang SQLite 'YYYY-MM-DD HH:MM:SS' (coi la UTC). Sai -> NaN.
+function parseTime(value) {
+  if (!value) return NaN;
+  const text = String(value).trim();
+  return Date.parse(text.includes('T') ? text : `${text.replace(' ', 'T')}Z`);
+}
+
 // Chuan hoa moc thoi gian ve ISO 8601 UTC de so sanh chuoi luon dung thu tu,
 // bat ke nguon la SQLite (strftime) hay Date.toISOString() cua client kia.
 function toIso(value) {
   if (!value) return null;
-  const t = Date.parse(String(value).includes('T') ? value : `${value}Z`);
+  const t = parseTime(value);
   return Number.isNaN(t) ? String(value) : new Date(t).toISOString();
+}
+
+// Chong lech dong ho: moc o tuong lai qua 24h (vd. nam 9999) bi kep ve "bay
+// gio", neu khong ban do se thang moi lan hop nhat mai mai.
+const MAX_CLOCK_SKEW_MS = 86400000;
+
+function clampIso(value, now) {
+  if (!value) return null;
+  const t = parseTime(value);
+  if (Number.isNaN(t)) return null;
+  return t > now + MAX_CLOCK_SKEW_MS ? new Date(now).toISOString() : new Date(t).toISOString();
+}
+
+// Moc dung de so sanh "ban nao moi hon". Thieu / sai -> 0 (luon thua).
+function examTime(exam) {
+  const t = parseTime(exam && exam.updated_at);
+  return Number.isNaN(t) ? 0 : t;
 }
 
 function emptyLibrary() {
@@ -53,7 +78,9 @@ function pickNewerTheme(primary, secondary) {
  * kieu nhe nhang de merge/so sanh on dinh giua 2 client.
  */
 function normalizeExam(raw) {
-  if (!raw || typeof raw !== 'object' || !raw.exam_id) return null;
+  if (!raw || typeof raw !== 'object' || !raw.exam_id || !String(raw.exam_id).trim()) return null;
+  const now = Date.now();
+  const oldest = '1970-01-01T00:00:00.000Z';
   const exam = {
     exam_id: String(raw.exam_id),
     title: raw.title == null ? '' : String(raw.title),
@@ -61,9 +88,9 @@ function normalizeExam(raw) {
     duration_minutes: raw.duration_minutes == null ? null : Number(raw.duration_minutes),
     school_header: raw.school_header == null ? '' : String(raw.school_header),
     blocks: Array.isArray(raw.blocks) ? raw.blocks : [],
-    created_at: toIso(raw.created_at) || toIso(raw.updated_at) || nowIso(),
-    updated_at: toIso(raw.updated_at) || toIso(raw.created_at) || nowIso(),
-    deleted_at: toIso(raw.deleted_at)
+    created_at: clampIso(raw.created_at, now) || clampIso(raw.updated_at, now) || oldest,
+    updated_at: clampIso(raw.updated_at, now) || clampIso(raw.created_at, now) || oldest,
+    deleted_at: clampIso(raw.deleted_at, now)
   };
   // Keep the optional render-critical snapshot as JSON data. Binary assets belong
   // in the asset store and are represented here only by manifest references.
@@ -158,26 +185,67 @@ function parseLibrary(input) {
   const out = {
     schema: obj.schema || LIBRARY_SCHEMA,
     updated_at: obj.updated_at || nowIso(),
-    exams: obj.exams.map(normalizeExam).filter(Boolean)
+    exams: dedupeExams(obj.exams.map(normalizeExam).filter(Boolean))
   };
   const theme = sanitizeTheme(obj.theme);
   if (theme) out.theme = theme;
   return out;
 }
 
+// Trung exam_id trong CUNG 1 thu vien: giu ban moi hon; bang nhau -> ban dung sau.
+function dedupeExams(exams) {
+  const byId = new Map();
+  for (const exam of exams) {
+    const prev = byId.get(exam.exam_id);
+    if (!prev || examTime(exam) >= examTime(prev)) byId.set(exam.exam_id, exam);
+  }
+  return Array.from(byId.values());
+}
+
 /**
- * Hop nhat 2 thu vien theo exam_id, "primary thang" tuyet doi khi trung id.
- * Union toan bo id o ca 2 ben. Rieng `theme` KHONG theo huong: "lan doi gan
- * nhat thang" (xem pickNewerTheme).
+ * Ban "nghiem" cua parseLibrary cho noi dung lay tu Gist khi dong bo: file
+ * vang mat / rong -> thu vien rong (lan push dau tien); co noi dung nhung hong
+ * -> NEM LOI. Neu coi noi dung hong la "rong" thi Push se ghi de mat sach du
+ * lieu tren cloud, Pull bao thanh cong gia.
+ */
+function parseLibraryStrict(input) {
+  if (input == null || (typeof input === 'string' && !input.trim())) return emptyLibrary();
+  let obj = input;
+  if (typeof input === 'string') {
+    try {
+      obj = JSON.parse(input);
+    } catch {
+      obj = null;
+    }
+  }
+  if (!obj || typeof obj !== 'object' || Array.isArray(obj) || !Array.isArray(obj.exams)) {
+    throw new Error('Noi dung thu vien tren Gist bi hong (khong phai JSON hop le). Da dung dong bo de tranh mat du lieu.');
+  }
+  if (obj.exams.some(exam => !normalizeExam(exam))) {
+    throw new Error('Noi dung thu vien tren Gist co muc de bi hong. Da dung dong bo de tranh mat du lieu.');
+  }
+  return parseLibrary(obj);
+}
+
+/**
+ * Hop nhat 2 thu vien theo exam_id, union toan bo id o ca 2 ben. Trung id ->
+ * "lan doi gan nhat thang" (Last-Write-Wins) theo updated_at; tombstone
+ * (deleted_at) cung chi la 1 phien ban, thang khi moi hon. Bang moc thoi gian
+ * -> primary thang (huong dong bo chi con la tie-break). `theme` cung LWW
+ * (xem pickNewerTheme).
  *   - Pull : mergeLibraries(cloud, local)  -> ghi ket qua vao may
  *   - Push : mergeLibraries(local, cloud)  -> ghi ket qua len Gist
+ * Giu dong bo voi LibraryMerge.kt (app Android).
  */
 function mergeLibraries(primary, secondary) {
   const p = parseLibrary(primary);
   const s = parseLibrary(secondary);
   const byId = new Map();
   for (const exam of s.exams) byId.set(exam.exam_id, exam);
-  for (const exam of p.exams) byId.set(exam.exam_id, exam);
+  for (const exam of p.exams) {
+    const other = byId.get(exam.exam_id);
+    if (!other || examTime(exam) >= examTime(other)) byId.set(exam.exam_id, exam);
+  }
   const out = {
     schema: LIBRARY_SCHEMA,
     updated_at: nowIso(),
@@ -220,6 +288,7 @@ module.exports = {
   rowsToLibrary,
   libraryToRows,
   parseLibrary,
+  parseLibraryStrict,
   sanitizeTheme,
   pickNewerTheme,
   mergeLibraries,

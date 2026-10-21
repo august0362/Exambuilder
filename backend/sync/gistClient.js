@@ -12,10 +12,23 @@
 const GITHUB_API = process.env.GITHUB_API_BASE || 'https://api.github.com';
 const LIBRARY_FILENAME = 'exambuilder-library.json';
 const GIST_DESCRIPTION = 'ExamBuilder - thu vien de kiem tra (dong bo PC <-> Android)';
+// Moi request GitHub co han chot: neu mang treo, Push/Pull (xep hang qua
+// syncLock) se ket mai va moi lan dong bo sau cung treo theo.
+const REQUEST_TIMEOUT_MS = 60000;
+const { SHARED_GIST_OWNER, isSharedGist } = require('./sharedLibrary');
+
+function timedFetch(url, options = {}) {
+  return fetch(url, { ...options, signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) }).catch(err => {
+    if (err && (err.name === 'TimeoutError' || err.name === 'AbortError')) {
+      throw new Error(`GitHub khong phan hoi sau ${REQUEST_TIMEOUT_MS / 1000} giay. Kiem tra mang roi thu lai.`);
+    }
+    throw err;
+  });
+}
 
 function authHeaders(token) {
   return {
-    Authorization: `Bearer ${token}`,
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
     Accept: 'application/vnd.github+json',
     'X-GitHub-Api-Version': '2022-11-28',
     'User-Agent': 'ExamBuilder'
@@ -42,17 +55,26 @@ async function readError(res) {
  * do. Xu ly ca truong hop GitHub cat bot file lon (> 1MB) qua `truncated`.
  */
 async function getLibrary(token, gistId) {
-  if (!token) throw new Error('Chua cau hinh GitHub token.');
   if (!gistId) throw new Error('Chua cau hinh Gist ID.');
 
-  const res = await fetch(`${GITHUB_API}/gists/${encodeURIComponent(gistId)}`, { headers: authHeaders(token) });
+  // Kho chung doc khong can token, ke ca may dang luu token cu/het han.
+  const readToken = isSharedGist(gistId) ? '' : token;
+  const res = await timedFetch(`${GITHUB_API}/gists/${encodeURIComponent(gistId)}`, { headers: authHeaders(readToken) });
   if (!res.ok) throw await readError(res);
 
   const gist = await res.json();
   const file = gist.files && gist.files[LIBRARY_FILENAME];
-  if (!file) return null;
+  if (!file) {
+    if (isSharedGist(gistId)) throw new Error('Kho de chung chua co file thu vien.');
+    return null;
+  }
   if (file.truncated && file.raw_url) {
-    const rawRes = await fetch(file.raw_url, { headers: authHeaders(token) });
+    const rawUrl = new URL(file.raw_url);
+    if (rawUrl.protocol !== 'https:' || rawUrl.hostname !== 'gist.githubusercontent.com' || rawUrl.username ||
+        !rawUrl.pathname.includes(`/${gistId}/raw/`)) {
+      throw new Error('Duong dan file Gist khong hop le.');
+    }
+    const rawRes = await timedFetch(file.raw_url, { headers: authHeaders('') });
     if (!rawRes.ok) throw await readError(rawRes);
     return await rawRes.text();
   }
@@ -65,7 +87,7 @@ async function getLibrary(token, gistId) {
 async function createGist(token, content) {
   if (!token) throw new Error('Chua cau hinh GitHub token.');
 
-  const res = await fetch(`${GITHUB_API}/gists`, {
+  const res = await timedFetch(`${GITHUB_API}/gists`, {
     method: 'POST',
     headers: { ...authHeaders(token), 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -87,7 +109,18 @@ async function updateGist(token, gistId, content) {
   if (!token) throw new Error('Chua cau hinh GitHub token.');
   if (!gistId) throw new Error('Chua cau hinh Gist ID.');
 
-  const res = await fetch(`${GITHUB_API}/gists/${encodeURIComponent(gistId)}`, {
+  if (isSharedGist(gistId)) {
+    const userRes = await timedFetch(`${GITHUB_API}/user`, { headers: authHeaders(token) });
+    if (!userRes.ok) throw await readError(userRes);
+    const user = await userRes.json();
+    if (String(user.login || '').toLowerCase() !== SHARED_GIST_OWNER.toLowerCase()) {
+      const err = new Error(`Chi tai khoan ${SHARED_GIST_OWNER} duoc day len kho de chung. Ban van co the keo de ve khong can token.`);
+      err.status = 403;
+      throw err;
+    }
+  }
+
+  const res = await timedFetch(`${GITHUB_API}/gists/${encodeURIComponent(gistId)}`, {
     method: 'PATCH',
     headers: { ...authHeaders(token), 'Content-Type': 'application/json' },
     body: JSON.stringify({ files: { [LIBRARY_FILENAME]: { content } } })

@@ -1,6 +1,7 @@
 import java.io.FileInputStream
 import java.util.Properties
 import java.security.MessageDigest
+import groovy.json.JsonSlurper
 
 plugins {
     id("com.android.application")
@@ -19,6 +20,12 @@ val updateRepository = providers.gradleProperty("updateRepository").getOrElse("a
 require(Regex("[A-Za-z0-9-]+/[A-Za-z0-9_.-]+").matches(updateRepository)) {
     "updateRepository phai co dang owner/repository"
 }
+val sharedLibrary = JsonSlurper().parse(rootProject.file("../resources/shared-library.json")) as Map<*, *>
+val sharedGistId = sharedLibrary["gist_id"] as String
+val sharedGistOwner = sharedLibrary["owner"] as String
+require(Regex("[a-fA-F0-9]{32}").matches(sharedGistId) && Regex("[A-Za-z0-9-]+").matches(sharedGistOwner)) {
+    "Cau hinh kho de chung khong hop le"
+}
 
 android {
     namespace = "com.exambuilder.android"
@@ -30,9 +37,11 @@ android {
         // while still allowing java.time / adaptive-icon APIs used here.
         minSdk = 26
         targetSdk = 36
-        versionCode = 3
-        versionName = "1.2.0"
+        versionCode = 4
+        versionName = "1.3.0"
         buildConfigField("String", "UPDATE_REPOSITORY", "\"$updateRepository\"")
+        buildConfigField("String", "SHARED_GIST_ID", "\"$sharedGistId\"")
+        buildConfigField("String", "SHARED_GIST_OWNER", "\"$sharedGistOwner\"")
     }
 
     signingConfigs {

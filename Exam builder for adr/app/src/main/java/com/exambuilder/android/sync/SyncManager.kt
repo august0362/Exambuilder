@@ -75,7 +75,6 @@ class SyncManager(
 
     private suspend fun pullLocked(): SyncResult = runCatching {
         val s = settingsStore.settings.first()
-        if (!s.hasToken) return SyncResult.Error("Chưa cấu hình GitHub token.")
         if (s.gistId.isBlank()) return SyncResult.Error("Chưa có Gist ID. Hãy \"Đẩy lên\" từ một máy để tạo Gist trước.")
 
         val app = appSettings.settings.first()

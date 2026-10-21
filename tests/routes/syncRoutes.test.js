@@ -14,6 +14,7 @@ const archiveRoutes = require('../../backend/routes/archiveRoutes');
 const syncRoutes = require('../../backend/routes/syncRoutes');
 const gistClient = require('../../backend/sync/gistClient');
 const { errorHandler } = require('../../backend/errorHandler');
+const { DEFAULT_GIST_ID, SHARED_GIST_OWNER } = require('../../backend/sync/sharedLibrary');
 
 function buildApp() {
   const app = express();
@@ -53,9 +54,10 @@ function cloudLibrary(exams, theme) {
 }
 
 describe('GET/POST /api/sync/settings', () => {
-  test('TC-SYNC-01: chua cau hinh -> configured false', async () => {
+  test('TC-SYNC-01: may moi co san kho chung, khong can token de doc', async () => {
     const res = await request(buildApp()).get('/api/sync/settings');
-    expect(res.body).toMatchObject({ success: true, configured: false, has_token: false, gist_id: '' });
+    expect(res.body).toMatchObject({ success: true, configured: true, has_token: false,
+      gist_id: DEFAULT_GIST_ID, default_gist_id: DEFAULT_GIST_ID, shared_gist_owner: SHARED_GIST_OWNER, is_shared: true });
   });
 
   test('TC-SYNC-02: luu token roi doc lai chi thay token da che', async () => {
@@ -87,7 +89,7 @@ describe('POST /api/sync/push', () => {
   test('TC-SYNC-05: chua co gist_id -> tao Gist moi va luu lai id', async () => {
     const app = buildApp();
     await request(app).post('/api/archive').send(examBody({ title: 'De local' }));
-    await request(app).post('/api/sync/settings').send({ github_token: 'ghp_token_1234567' });
+    await request(app).post('/api/sync/settings').send({ github_token: 'ghp_token_1234567', gist_id: '' });
     gistClient.createGist.mockResolvedValue({ id: 'created-gist-id', html_url: 'https://gist.github.com/x' });
 
     const res = await request(app).post('/api/sync/push');
@@ -141,26 +143,53 @@ describe('POST /api/sync/push', () => {
     expect(res.status).toBe(502);
     expect(res.body.error).toMatch(/401/);
   });
+
+  test('cloud co exam hong -> dung push, khong ghi de Gist hoac local', async () => {
+    const app = buildApp();
+    const saved = await request(app).post('/api/archive').send(examBody({ title: 'ban local' }));
+    await request(app).post('/api/sync/settings').send({ github_token: 'ghp_token_1234567', gist_id: 'g1' });
+    gistClient.getLibrary.mockResolvedValue(cloudLibrary([null]));
+
+    const res = await request(app).post('/api/sync/push');
+    expect(res.status).toBe(502);
+    expect(gistClient.updateGist).not.toHaveBeenCalled();
+    expect((await request(app).get(`/api/archive/${saved.body.exam_id}`)).body.exam.title).toBe('ban local');
+  });
 });
 
 describe('POST /api/sync/pull', () => {
+  test('may moi Pull kho chung khong can token, khong ghi len GitHub', async () => {
+    const app = buildApp();
+    gistClient.getLibrary.mockResolvedValue(cloudLibrary([
+      { exam_id: 'shared-example', title: 'De chung', subject: '', blocks: BLOCKS,
+        created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z', deleted_at: null }
+    ]));
+    const res = await request(app).post('/api/sync/pull');
+    expect(res.status).toBe(200);
+    expect(gistClient.getLibrary).toHaveBeenCalledWith(undefined, DEFAULT_GIST_ID);
+    expect(gistClient.updateGist).not.toHaveBeenCalled();
+    expect(gistClient.createGist).not.toHaveBeenCalled();
+    expect((await request(app).get('/api/archive')).body.exams.some(e => e.exam_id === 'shared-example')).toBe(true);
+  });
+
   test('TC-SYNC-08: chua co gist_id -> 400', async () => {
     const app = buildApp();
-    await request(app).post('/api/sync/settings').send({ github_token: 'ghp_token_1234567' });
+    await request(app).post('/api/sync/settings').send({ github_token: 'ghp_token_1234567', gist_id: '' });
     const res = await request(app).post('/api/sync/pull');
     expect(res.status).toBe(400);
   });
 
-  test('TC-SYNC-09: merge(cloud, local): cloud thang -> khoi phuc de da xoa cuc bo', async () => {
+  test('TC-SYNC-09: LWW - ban cloud SUA SAU lan xoa cuc bo -> khoi phuc de', async () => {
     const app = buildApp();
     const saved = await request(app).post('/api/archive').send(examBody({ title: 'ban local' }));
     const id = saved.body.exam_id;
     await request(app).delete(`/api/archive/${id}`); // xoa cuc bo -> tombstone
     await request(app).post('/api/sync/settings').send({ github_token: 'ghp_token_1234567', gist_id: 'g1' });
 
+    const later = new Date(Date.now() + 60000).toISOString();
     gistClient.getLibrary.mockResolvedValue(cloudLibrary([
       { exam_id: id, title: 'ban cloud CON SONG', subject: '', duration_minutes: null, school_header: '', blocks: BLOCKS,
-        created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z', deleted_at: null }
+        created_at: '2026-01-01T00:00:00Z', updated_at: later, deleted_at: null }
     ]));
 
     const res = await request(app).post('/api/sync/pull');
@@ -170,6 +199,24 @@ describe('POST /api/sync/pull', () => {
     const restored = list.body.exams.find(e => e.exam_id === id);
     expect(restored).toBeDefined();
     expect(restored.title).toBe('ban cloud CON SONG');
+  });
+
+  test('TC-SYNC-09b: LWW - ban cloud CU HON lan xoa cuc bo -> de van bi xoa (khong hoi sinh)', async () => {
+    const app = buildApp();
+    const saved = await request(app).post('/api/archive').send(examBody({ title: 'ban local' }));
+    const id = saved.body.exam_id;
+    await request(app).delete(`/api/archive/${id}`);
+    await request(app).post('/api/sync/settings').send({ github_token: 'ghp_token_1234567', gist_id: 'g1' });
+
+    gistClient.getLibrary.mockResolvedValue(cloudLibrary([
+      { exam_id: id, title: 'ban cloud cu', subject: '', duration_minutes: null, school_header: '', blocks: BLOCKS,
+        created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z', deleted_at: null }
+    ]));
+
+    const res = await request(app).post('/api/sync/pull');
+    expect(res.status).toBe(200);
+    const list = await request(app).get('/api/archive');
+    expect(list.body.exams.find(e => e.exam_id === id)).toBeUndefined();
   });
 
   test('TC-SYNC-10: gist chua co file thu vien (getLibrary -> null) van chay, khong nem', async () => {

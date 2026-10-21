@@ -5,6 +5,9 @@
  * cua Express.
  */
 function errorHandler(err, req, res, next) {
+  if (err.type === 'entity.too.large' || err.status === 413) {
+    return res.status(413).json({ success: false, error: 'Du lieu gui len qua lon' });
+  }
   if (err.type === 'entity.parse.failed' || (err instanceof SyntaxError && 'body' in err)) {
     return res.status(400).json({ success: false, error: 'Du lieu JSON gui len khong hop le' });
   }

@@ -1,19 +1,24 @@
 const express = require('express');
 const { getDb } = require('../database');
-const { withLock } = require('../mutex');
+const { withLock, createLock } = require('../mutex');
 const gistClient = require('../sync/gistClient');
 const {
   rowsToLibrary,
   libraryToRows,
   mergeLibraries,
   purgeOldTombstones,
-  parseLibrary,
+  parseLibraryStrict,
   sanitizeTheme,
   emptyLibrary,
   summarize
 } = require('../sync/library');
 
 const router = express.Router();
+
+// Push/Pull xep hang rieng (khong dung withLock): 2 lan dong bo khong chay xen
+// nhau, nhung luu/xoa de trong kho van chay binh thuong khi dang cho mang.
+const syncLock = createLock();
+const { DEFAULT_GIST_ID, SHARED_GIST_OWNER, isSharedGist } = require('../sync/sharedLibrary');
 
 function maskToken(token) {
   if (!token) return null;
@@ -22,13 +27,21 @@ function maskToken(token) {
 }
 
 async function readSettings(db) {
-  return (await db.get('SELECT github_token, gist_id, last_synced_at FROM SYNC_SETTINGS WHERE id = 1')) || {};
+  const settings = (await db.get('SELECT github_token, gist_id, last_synced_at FROM SYNC_SETTINGS WHERE id = 1')) || {};
+  // Gia tri rong duoc luu ro rang de "Tao Gist moi" van tao kho rieng.
+  return { ...settings, gist_id: settings.gist_id == null ? DEFAULT_GIST_ID : settings.gist_id };
 }
 
 /**
  * Ghi ket qua merge nguoc lai vao SAVED_EXAM. Vi ung dung dung chung 1 ket
  * noi SQLite, phai xep hang qua withLock() + boc transaction (xem
  * backend/routes/examRoutes.js va backend/mutex.js).
+ *
+ * Chi ghi de dong khi ban merge KHONG CU HON dong hien co (LWW lan nua, tai
+ * thoi diem ghi): snapshot local duoc doc truoc khi goi mang, nen neu nguoi
+ * dung luu / xoa de trong luc cho Gist thi ban moi do phai duoc giu lai. Bang
+ * nhau -> ghi, cho khop luat hoa "primary thang" cua mergeLibraries. Kho de
+ * ghi moc den mili-giay (%f) nen ban sua sau snapshot luon moi hon han.
  */
 async function persistLibrary(db, library) {
   const rows = libraryToRows(library);
@@ -48,7 +61,9 @@ async function persistLibrary(db, library) {
              payload_json = excluded.payload_json,
              created_at = excluded.created_at,
              updated_at = excluded.updated_at,
-             deleted_at = excluded.deleted_at`,
+             deleted_at = excluded.deleted_at
+           WHERE SAVED_EXAM.updated_at IS NULL
+              OR julianday(excluded.updated_at) >= julianday(SAVED_EXAM.updated_at)`,
           [
             r.exam_id, r.title, r.subject, r.duration_minutes, r.school_header,
             r.payload_json, r.created_at, r.updated_at, r.deleted_at
@@ -85,10 +100,13 @@ router.get('/settings', async (req, res) => {
     const s = await readSettings(db);
     res.json({
       success: true,
-      configured: !!s.github_token,
+      configured: !!s.gist_id,
       has_token: !!s.github_token,
       masked_token: maskToken(s.github_token),
       gist_id: s.gist_id || '',
+      default_gist_id: DEFAULT_GIST_ID,
+      shared_gist_owner: SHARED_GIST_OWNER,
+      is_shared: isSharedGist(s.gist_id),
       last_synced_at: s.last_synced_at || null
     });
   } catch (err) {
@@ -103,13 +121,13 @@ router.post('/settings', async (req, res) => {
   try {
     const current = await readSettings(db);
     let token = current.github_token || null;
-    let gistId = current.gist_id || null;
+    let gistId = current.gist_id;
 
     if (typeof body.github_token === 'string' && body.github_token.trim()) {
       token = body.github_token.trim();
     }
     if (Object.prototype.hasOwnProperty.call(body, 'gist_id')) {
-      gistId = body.gist_id ? String(body.gist_id).trim() : null;
+      gistId = body.gist_id ? String(body.gist_id).trim() : '';
     }
 
     await db.run(
@@ -125,7 +143,7 @@ router.post('/settings', async (req, res) => {
 });
 
 // Push: may -> cloud. merge(local, cloud) roi ghi de Gist va ghi nguoc ve may.
-router.post('/push', async (req, res) => {
+router.post('/push', (req, res) => syncLock(async () => {
   const db = await getDb();
   try {
     const s = await readSettings(db);
@@ -133,7 +151,7 @@ router.post('/push', async (req, res) => {
       return res.status(400).json({ success: false, error: 'Chua cau hinh GitHub token trong muc Dong bo.' });
     }
 
-    let local = purgeOldTombstones(await localLibrary(db));
+    const local = await localLibrary(db);
     // Chu de mau: web luu o localStorage nen client gui kem trong body.
     const clientTheme = sanitizeTheme(req.body && req.body.theme);
     if (clientTheme) local.theme = clientTheme;
@@ -144,10 +162,12 @@ router.post('/push', async (req, res) => {
 
     if (gistId) {
       const raw = await gistClient.getLibrary(s.github_token, gistId);
-      cloud = raw ? parseLibrary(raw) : emptyLibrary();
+      cloud = parseLibraryStrict(raw);
     }
 
-    const merged = mergeLibraries(local, cloud);
+    // Don tombstone cu SAU khi merge: neu don truoc, ban "con song" cu hon
+    // tren cloud se thang va lam de da xoa song lai.
+    const merged = purgeOldTombstones(mergeLibraries(local, cloud));
     const content = JSON.stringify(merged, null, 2);
 
     if (gistId) {
@@ -170,24 +190,21 @@ router.post('/push', async (req, res) => {
     res.json({ success: true, direction: 'push', gist_id: gistId, gist_url: gistUrl, result: summarize(merged), theme: merged.theme || null });
   } catch (err) {
     console.error(err);
-    res.status(502).json({ success: false, error: err.message || 'Loi day len Gist' });
+    res.status(err.status === 403 ? 403 : 502).json({ success: false, error: err.message || 'Loi day len Gist' });
   }
-});
+}));
 
 // Pull: cloud -> may. merge(cloud, local) roi ghi ve may.
-router.post('/pull', async (req, res) => {
+router.post('/pull', (req, res) => syncLock(async () => {
   const db = await getDb();
   try {
     const s = await readSettings(db);
-    if (!s.github_token) {
-      return res.status(400).json({ success: false, error: 'Chua cau hinh GitHub token trong muc Dong bo.' });
-    }
     if (!s.gist_id) {
       return res.status(400).json({ success: false, error: 'Chua co Gist ID. Hay "Day len" tu mot may de tao Gist truoc.' });
     }
 
     const raw = await gistClient.getLibrary(s.github_token, s.gist_id);
-    const cloud = raw ? parseLibrary(raw) : emptyLibrary();
+    const cloud = parseLibraryStrict(raw);
     const local = await localLibrary(db);
     const clientTheme = sanitizeTheme(req.body && req.body.theme);
     if (clientTheme) local.theme = clientTheme;
@@ -201,6 +218,6 @@ router.post('/pull', async (req, res) => {
     console.error(err);
     res.status(502).json({ success: false, error: err.message || 'Loi keo ve tu Gist' });
   }
-});
+}));
 
 module.exports = router;
