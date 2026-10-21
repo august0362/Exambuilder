@@ -2,6 +2,8 @@
 
 Nguồn cập nhật của bản 1.2.0 là `august0362/Exambuilder`. App đọc latest **stable release**, tải file `android-update.json`, so sánh `versionCode` rồi mới hiện nút cập nhật. Tên tag không quyết định phiên bản Android; `versionCode` trong APK và JSON phải khớp.
 
+Ngày 21/10/2026, kho và [release Android 1.2.0](https://github.com/august0362/Exambuilder/releases/tag/android-v1.2.0) đã công khai. Đã xác minh API latest, metadata và APK truy cập không cần đăng nhập; kích thước và SHA-256 APK tải về khớp thông tin phát hành. Tải APK tại [ExamBuilder.apk](https://github.com/august0362/Exambuilder/releases/download/android-v1.2.0/ExamBuilder.apk).
+
 ## Tạo gói phát hành
 
 1. Tăng `versionCode` và đổi `versionName` trong `app/build.gradle.kts` cho mỗi bản mới. Bản hiện tại là code **3**, tên **1.2.0**.

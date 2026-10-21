@@ -125,7 +125,7 @@ Trong **Cài đặt → Cập nhật ứng dụng**, xem phiên bản hiện t�
 
 Nguồn mặc định: **`august0362/Exambuilder`**, endpoint `https://api.github.com/repos/august0362/Exambuilder/releases/latest`. Chỉ nhận bản ổn định và `versionCode` lớn hơn bản đang cài. Trước khi cài, kiểm tra kích thước, SHA-256, package, phiên bản và cùng khóa ký. Android vẫn yêu cầu quyền cài ứng dụng từ nguồn này và xác nhận cài đặt.
 
-Mỗi GitHub Release cần **cả `ExamBuilder.apk` và `android-update.json`** từ cùng lần build. Kho và release phải truy cập công khai; ứng dụng không nhúng token GitHub và không dùng token đồng bộ Gist để tải cập nhật. Tại thời điểm triển khai, API của kho trả về 404: cần kiểm tra quyền công khai và xuất bản release trước khi kiểm thử tải trực tuyến. Chi tiết: [ANDROID_UPDATES.md](ANDROID_UPDATES.md).
+Mỗi GitHub Release cần **cả `ExamBuilder.apk` và `android-update.json`** từ cùng lần build. Kho và release phải truy cập công khai; ứng dụng không nhúng token GitHub và không dùng token đồng bộ Gist để tải cập nhật. Ngày 21/10/2026, kho đã chuyển sang công khai và [bản Android 1.2.0](https://github.com/august0362/Exambuilder/releases/tag/android-v1.2.0) đã phát hành: xác minh đọc API phiên bản và tải cả hai file không cần đăng nhập, SHA-256 APK khớp metadata. Chi tiết: [ANDROID_UPDATES.md](ANDROID_UPDATES.md).
 
 ## Known gaps (scaffold, not a finished app)
 
