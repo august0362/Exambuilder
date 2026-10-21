@@ -7,6 +7,7 @@ import com.exambuilder.android.data.dto.LibraryJson
 import com.exambuilder.android.data.dto.SavedExamDto
 import com.exambuilder.android.data.dto.toSavedExamDto
 import com.exambuilder.android.model.Exam
+import com.exambuilder.android.sync.LibraryMerge
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -83,11 +84,25 @@ class ExamArchiveRepository(private val context: Context) {
         }
     }
 
-    /** Ghi de toan bo kho (dung sau merge khi Push/Pull). */
-    suspend fun replaceAll(exams: List<SavedExamDto>) = withContext(Dispatchers.IO) {
+    /**
+     * Ghi ket qua merge cua Push/Pull vao kho. Snapshot dung de merge duoc doc
+     * TRUOC khi goi mang, nen phai merge LWW lan nua voi trang thai HIEN TAI
+     * (trong ioMutex): ban nguoi dung luu / xoa trong luc cho Gist duoc giu lai.
+     * Bang moc -> ket qua sync thang (khop luat hoa cua LibraryMerge.merge).
+     */
+    suspend fun mergeFromSync(exams: List<SavedExamDto>, purgeOldTombstones: Boolean = false) = withContext(Dispatchers.IO) {
         ioMutex.withLock {
-            writeFileLocked(exams)
-            _entries.value = exams
+            val current = readFileLocked()
+            val merged = LibraryMerge.merge(
+                primary = current.copy(exams = exams),
+                secondary = current
+            ).exams.let { latest ->
+                if (purgeOldTombstones) LibraryMerge.purgeOldTombstones(current.copy(exams = latest)).exams else latest
+            }
+            if (merged != current.exams) {
+                writeFileLocked(merged)
+            }
+            _entries.value = merged
         }
     }
 

@@ -5,7 +5,7 @@ Native Kotlin + Jetpack Compose companion app to the web ExamBuilder (`../fronte
 ## Stack
 
 - Kotlin, Jetpack Compose (Material 3), Navigation-Compose
-- `minSdk 26` (Android 8.0) / `targetSdk 34`
+- `minSdk 26` (Android 8.0) / `targetSdk 36`; bản hiện tại **1.2.0** (`versionCode 3`)
 - No third-party PDF library — PDF export uses the platform `android.graphics.pdf.PdfDocument` API
 
 ## File tree
@@ -64,12 +64,12 @@ nền xanh thương hiệu `#2563EB`. Đổi ảnh nguồn thì chạy lại `no
 
 Mọi đề soạn trên máy được **tự động lưu** vào `filesDir/exam-library.json` (debounce 1.2 giây sau thay đổi cuối — xem `LaunchedEffect` trong `ExamBuilderNavHost`). Tab **"Kho đề"** cho mở lại đề để soạn tiếp hoặc **xóa** (xóa mềm — tombstone, chỉ trên máy này).
 
-Đồng bộ dùng **một GitHub Gist secret** làm kho chung, file `exambuilder-library.json` — cùng định dạng và cùng logic merge với web (`backend/sync/library.js`):
+Đồng bộ dùng **một GitHub Gist secret** làm kho chung, file `exambuilder-library.json` — cùng định dạng và cùng logic merge với web (`backend/sync/library.js`). Khi trùng `exam_id`, bản có `updated_at` mới hơn thắng (kể cả bản xóa mềm); khi bằng thời gian thì bản primary thắng:
 
 | Thao tác | Hướng | Quy tắc |
 |---|---|---|
-| **⬆️ Đẩy lên** | máy → Gist | `merge(local, cloud)` — bản trên máy thắng khi trùng `exam_id`; tự tạo Gist nếu chưa có Gist ID |
-| **⬇️ Kéo về** | Gist → máy | `merge(cloud, local)` — bản trên cloud thắng; dùng để lấy đề từ thiết bị khác hoặc khôi phục đề vừa lỡ xóa |
+| **⬆️ Đẩy lên** | máy → Gist | `merge(local, cloud)` — giữ bản mới hơn; tự tạo Gist nếu chưa có Gist ID |
+| **⬇️ Kéo về** | Gist → máy | `merge(cloud, local)` — giữ bản mới hơn; lấy đề từ thiết bị khác |
 
 Cấu hình trong tab "Kho đề" (Token & Gist ID khóa sau khi lưu, đổi qua nút **🔑 Thay đổi Token** /
 **🆔 Thay đổi Gist ID**): thiết bị đầu tiên bấm **🆕 Tạo Gist ID mới**; thiết bị sau dán **cùng
@@ -103,10 +103,10 @@ Compiled and verified locally with the Android SDK/Gradle already installed on t
 
 To rebuild: open `Exam builder for adr/` in Android Studio and let it sync (it will regenerate `gradle-wrapper.jar`, which isn't committed here), or run `gradle assembleDebug` from this directory with any Gradle 8.9+ install (kho đề + đồng bộ thêm 2 dependency: `kotlinx-serialization-json` và `androidx.datastore:datastore-preferences`, tải về ở lần build đầu).
 
-### Bản release (`exam_builder.apk`)
+### Bản release (`ExamBuilder.apk`)
 
-- `gradle assembleRelease` → `app/build/outputs/apk/release/app-release.apk` (đã minify R8 + ký).
-- Bản phát hành để side-load: **`exam_builder.apk`** (copy từ `app-release.apk`).
+- `gradle :app:prepareAndroidUpdate` → `app/build/outputs/apk/release/ExamBuilder.apk` (đã minify R8 + ký) và `android-update.json` (phiên bản, Android tối thiểu, SHA-256).
+- Bản phát hành để side-load: **`ExamBuilder.apk`** (copy từ thư mục output).
 - **Ký release** đọc từ `keystore.properties` ở gốc module (KHÔNG commit — xem `.gitignore`). Không có file này thì `assembleRelease` vẫn chạy nhưng ra APK chưa ký (không cài được). Tạo lại:
   ```
   keytool -genkeypair -keystore app/exam-builder-release.jks -alias exambuilder \
@@ -119,8 +119,16 @@ To rebuild: open `Exam builder for adr/` in Android Studio and let it sync (it w
 
 > **Note on the parent path:** this repo lives under a folder with Vietnamese diacritics (`Desktop/file nộp bài tập all/...`). AGP hard-fails on non-ASCII project paths by default, so `gradle.properties` sets `android.overridePathCheck=true` to allow it — keep that line if you keep this folder name; it can be removed if the project is ever moved to an ASCII-only path.
 
+## Cập nhật qua GitHub Releases
+
+Trong **Cài đặt → Cập nhật ứng dụng**, xem phiên bản hiện tại, kiểm tra bản mới, tải APK và bấm **Cài đặt bản mới**. App tự kiểm tra khi mở/trở lại màn hình hoặc có mạng Internet được Android xác nhận. Tự kiểm tra tối đa mỗi 6 giờ khi thành công; sau lỗi chờ 5 phút. Nút kiểm tra thủ công bỏ qua thời gian chờ. Không tự tải khi chưa bấm Cập nhật. APK đã tải có thể cài khi ngoại tuyến.
+
+Nguồn mặc định: **`august0362/Exambuilder`**, endpoint `https://api.github.com/repos/august0362/Exambuilder/releases/latest`. Chỉ nhận bản ổn định và `versionCode` lớn hơn bản đang cài. Trước khi cài, kiểm tra kích thước, SHA-256, package, phiên bản và cùng khóa ký. Android vẫn yêu cầu quyền cài ứng dụng từ nguồn này và xác nhận cài đặt.
+
+Mỗi GitHub Release cần **cả `ExamBuilder.apk` và `android-update.json`** từ cùng lần build. Kho và release phải truy cập công khai; ứng dụng không nhúng token GitHub và không dùng token đồng bộ Gist để tải cập nhật. Tại thời điểm triển khai, API của kho trả về 404: cần kiểm tra quyền công khai và xuất bản release trước khi kiểm thử tải trực tuyến. Chi tiết: [ANDROID_UPDATES.md](ANDROID_UPDATES.md).
+
 ## Known gaps (scaffold, not a finished app)
 
 - Persistence: kho đề đã được ghi ra file JSON (`ExamArchiveRepository`), nhưng đề **đang soạn dở** vẫn chỉ nằm trong `ExamViewModel` cho tới khi autosave chạy (debounce 1.2s) — chưa khôi phục lại đúng con trỏ soạn khi kill app giữa chừng. Không dùng Room (dữ liệu phi quan hệ, khớp 1:1 với file Gist nên JSON gọn hơn).
-- Đồng bộ Gist là **thủ công 2 nút** (Đẩy lên / Kéo về), không tự chạy nền; không giải quyết xung đột theo dòng — "primary thắng" cả đề khi trùng `exam_id`.
+- Đồng bộ Gist là **thủ công 2 nút** (Đẩy lên / Kéo về), không tự chạy nền; không giải quyết xung đột theo dòng — giữ cả đề có thời gian cập nhật mới hơn.
 - `PdfExporter` does plain-text pagination (no rich text, no stacked-fraction rendering equivalent to the web app's `mathFraction.js`). Good enough for a first export, not a pixel-match of the web PDF.

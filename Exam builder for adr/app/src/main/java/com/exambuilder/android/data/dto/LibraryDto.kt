@@ -82,7 +82,7 @@ data class SavedExamDto(
 /**
  * Chu de mau dong bo kem thu vien. Chi dong bo `id`; co chu van cuc bo tung
  * may. Luat hop nhat: "lan doi gan nhat thang" theo [updatedAt] (xem
- * LibraryMerge.pickNewerTheme) - KHAC luat "primary thang" cua de.
+ * LibraryMerge.pickNewerTheme) - cung LWW nhu de.
  */
 @Serializable
 data class ThemeDto(

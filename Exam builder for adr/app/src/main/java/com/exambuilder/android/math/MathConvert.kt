@@ -94,8 +94,8 @@ object MathConvert {
         // --- square root ---
         r("""\\sqrt\{([^{}]*)\}""") { m -> "√" + wrapSqrtContent(m.groupValues[1]) },
 
-        // --- fraction \frac{a}{b} -> a/b (parenthesise a sum/difference) ---
-        r("""\\frac\{([^{}]*)\}\{([^{}]*)\}""") { m -> wrapIfExpression(m.groupValues[1]) + "/" + wrapIfExpression(m.groupValues[2]) },
+        // --- fraction \frac{a}{b} (also \dfrac/\tfrac) -> a/b (parenthesise a sum/difference) ---
+        r("""\\[dt]?frac\{([^{}]*)\}\{([^{}]*)\}""") { m -> wrapIfExpression(m.groupValues[1]) + "/" + wrapIfExpression(m.groupValues[2]) },
 
         // --- drop the $ delimiters (we render Unicode, not real LaTeX) ---
         r("""\$""") { "" },

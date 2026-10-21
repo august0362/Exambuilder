@@ -1,5 +1,6 @@
 import java.io.FileInputStream
 import java.util.Properties
+import java.security.MessageDigest
 
 plugins {
     id("com.android.application")
@@ -14,6 +15,10 @@ val keystoreProps = Properties().apply {
     if (keystorePropsFile.exists()) FileInputStream(keystorePropsFile).use { load(it) }
 }
 val hasReleaseSigning = keystorePropsFile.exists()
+val updateRepository = providers.gradleProperty("updateRepository").getOrElse("august0362/Exambuilder")
+require(Regex("[A-Za-z0-9-]+/[A-Za-z0-9_.-]+").matches(updateRepository)) {
+    "updateRepository phai co dang owner/repository"
+}
 
 android {
     namespace = "com.exambuilder.android"
@@ -25,8 +30,9 @@ android {
         // while still allowing java.time / adaptive-icon APIs used here.
         minSdk = 26
         targetSdk = 36
-        versionCode = 2
-        versionName = "1.1.0"
+        versionCode = 3
+        versionName = "1.2.0"
+        buildConfigField("String", "UPDATE_REPOSITORY", "\"$updateRepository\"")
     }
 
     signingConfigs {
@@ -60,6 +66,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
     composeOptions {
         kotlinCompilerExtensionVersion = "1.5.14"
@@ -79,6 +86,36 @@ android {
                 if (variant.buildType.name == "release") "ExamBuilder.apk"
                 else "ExamBuilder-${variant.buildType.name}.apk"
         }
+    }
+}
+
+// Tai kem file nay va ExamBuilder.apk len CUNG mot GitHub Release cong khai.
+tasks.register("prepareAndroidUpdate") {
+    dependsOn("assembleRelease")
+    doLast {
+        check(hasReleaseSigning) { "Can keystore.properties de tao ban cap nhat APK da ky." }
+        val apk = layout.buildDirectory.file("outputs/apk/release/ExamBuilder.apk").get().asFile
+        val sha256 = MessageDigest.getInstance("SHA-256")
+        apk.inputStream().use { input ->
+            val buffer = ByteArray(64 * 1024)
+            while (true) {
+                val count = input.read(buffer)
+                if (count < 0) break
+                sha256.update(buffer, 0, count)
+            }
+        }
+        val hash = sha256.digest().joinToString("") { "%02x".format(it) }
+        val manifest = apk.resolveSibling("android-update.json")
+        manifest.writeText("""
+            {
+              "versionCode": ${android.defaultConfig.versionCode},
+              "versionName": "${android.defaultConfig.versionName}",
+              "minSdk": ${android.defaultConfig.minSdk},
+              "apkName": "ExamBuilder.apk",
+              "sha256": "$hash"
+            }
+        """.trimIndent() + "\n")
+        logger.lifecycle("Android update: ${manifest.absolutePath}")
     }
 }
 

@@ -230,7 +230,9 @@ object DocxExporter {
             }
             if (sizeHalfPt != null) rPr.append("""<w:sz w:val="$sizeHalfPt"/><w:szCs w:val="$sizeHalfPt"/>""")
             rPr.append("</w:rPr>")
-            """<w:r>$rPr<w:t xml:space="preserve">${xml(run.text)}</w:t></w:r>"""
+            // "\n" (cac y a) b) c)) -> <w:br/>: Word coi xuong dong trong <w:t> la khoang trang.
+            val body = run.text.split("\n").joinToString("""</w:t><w:br/><w:t xml:space="preserve">""") { xml(it) }
+            """<w:r>$rPr<w:t xml:space="preserve">$body</w:t></w:r>"""
         }
     }
 
