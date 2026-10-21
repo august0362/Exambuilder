@@ -37,8 +37,8 @@ android {
         // while still allowing java.time / adaptive-icon APIs used here.
         minSdk = 26
         targetSdk = 36
-        versionCode = 4
-        versionName = "1.3.0"
+        versionCode = 5
+        versionName = "1.4.0"
         buildConfigField("String", "UPDATE_REPOSITORY", "\"$updateRepository\"")
         buildConfigField("String", "SHARED_GIST_ID", "\"$sharedGistId\"")
         buildConfigField("String", "SHARED_GIST_OWNER", "\"$sharedGistOwner\"")

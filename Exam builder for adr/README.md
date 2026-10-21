@@ -1,11 +1,11 @@
 # ExamBuilder for Android
 
-Native Kotlin + Jetpack Compose companion app to the web ExamBuilder (`../frontend`, `../backend`). Lets a teacher author an exam, preview it in student/teacher mode, and export it as an A4 PDF directly from a phone or tablet — no server dependency.
+Native Kotlin + Jetpack Compose companion app to the web ExamBuilder (`../frontend`, `../backend`). Opens a shared/local exam library, displays exams in student/teacher mode, and exports PDF/Word directly from a phone or tablet — no server dependency. Author exams on the web; Android 1.4.0 removes the authoring tab and opens the library first.
 
 ## Stack
 
 - Kotlin, Jetpack Compose (Material 3), Navigation-Compose
-- `minSdk 26` (Android 8.0) / `targetSdk 36`; bản hiện tại **1.3.0** (`versionCode 4`)
+- `minSdk 26` (Android 8.0) / `targetSdk 36`; bản hiện tại **1.4.0** (`versionCode 5`)
 - No third-party PDF library — PDF export uses the platform `android.graphics.pdf.PdfDocument` API
 
 ## File tree
@@ -38,9 +38,9 @@ Exam builder for adr/
         │   ├── viewmodel/LibraryViewModel.kt # state màn "Kho đề": danh sách + cấu hình + Push/Pull + autosave
         │   ├── export/PdfExporter.kt      # renders Exam -> multi-page A4 PDF
         │   ├── ui/theme/{Color,Type,Theme,Palettes}.kt  # 11 chủ đề ColorScheme (9 sáng + 2 tối) + Typography.scaled(factor)
-        │   ├── ui/navigation/ExamBuilderNavHost.kt  # bottom-nav: Soạn đề / Xem trước / Xuất file / Kho đề / Cài đặt
+        │   ├── ui/navigation/ExamBuilderNavHost.kt  # Kho đề (màn đầu) / Xem đề / Xuất file / Cài đặt
         │   └── ui/screens/
-        │       ├── ExamBuilderScreen.kt   # Core UI 1: exam builder view
+        │       ├── ExamBuilderScreen.kt   # legacy source, no longer exposed in navigation
         │       ├── PreviewScreen.kt       # Core UI 2: preview (số câu liên tục 1..N, chạm để bung câu)
         │       ├── ExportScreen.kt        # Core UI 3: export trigger (PDF + share sheet)
         │       ├── LibraryScreen.kt       # Core UI 4: kho đề (mở lại / xóa) + đồng bộ Gist
@@ -62,7 +62,7 @@ nền xanh thương hiệu `#2563EB`. Đổi ảnh nguồn thì chạy lại `no
 
 ## Kho đề + Đồng bộ GitHub Gist (PC ↔ Android)
 
-Mọi đề soạn trên máy được **tự động lưu** vào `filesDir/exam-library.json` (debounce 1.2 giây sau thay đổi cuối — xem `LaunchedEffect` trong `ExamBuilderNavHost`). Tab **"Kho đề"** cho mở lại đề để soạn tiếp hoặc **xóa** (xóa mềm — tombstone, chỉ trên máy này).
+Tab **Kho đề** là màn hình đầu tiên. Đề đã kéo về nằm trong `filesDir/exam-library.json` và vẫn mở được ngoại tuyến. Bấm **Mở** để xem đề; mỗi lần mở đều bật **bản học sinh**, kể cả sau khi bạn vừa xem bản giáo viên. Nút con mắt trong **Xem đề** và công tắc trong **Xuất file** cùng điều khiển một chế độ hiển thị, nên PDF/Word theo đúng chế độ đang xem. Mở đề hoặc đổi chế độ không ghi lại đề và không thay đổi thời gian cập nhật. Có thể **xóa** đề trên máy bằng bản xóa mềm (tombstone).
 
 Đồng bộ dùng **một GitHub Gist secret** làm kho chung, file `exambuilder-library.json` — cùng định dạng và cùng logic merge với web (`backend/sync/library.js`). Khi trùng `exam_id`, bản có `updated_at` mới hơn thắng (kể cả bản xóa mềm); khi bằng thời gian thì bản primary thắng:
 
@@ -129,6 +129,6 @@ Mỗi GitHub Release cần **cả `ExamBuilder.apk` và `android-update.json`** 
 
 ## Known gaps (scaffold, not a finished app)
 
-- Persistence: kho đề đã được ghi ra file JSON (`ExamArchiveRepository`), nhưng đề **đang soạn dở** vẫn chỉ nằm trong `ExamViewModel` cho tới khi autosave chạy (debounce 1.2s) — chưa khôi phục lại đúng con trỏ soạn khi kill app giữa chừng. Không dùng Room (dữ liệu phi quan hệ, khớp 1:1 với file Gist nên JSON gọn hơn).
+- Persistence: kho đề được ghi ra file JSON (`ExamArchiveRepository`). Đề đang mở chỉ được giữ trong phiên làm việc; sau khi khởi động lại, chọn đề trong Kho đề. Không dùng Room (dữ liệu phi quan hệ, khớp 1:1 với file Gist nên JSON gọn hơn).
 - Pull tự động chạy khi app mở/có mạng, không chạy dịch vụ định kỳ khi app đã đóng. Push vẫn thủ công; không giải quyết xung đột theo dòng — giữ cả đề có thời gian cập nhật mới hơn.
 - `PdfExporter` does plain-text pagination (no rich text, no stacked-fraction rendering equivalent to the web app's `mathFraction.js`). Good enough for a first export, not a pixel-match of the web PDF.

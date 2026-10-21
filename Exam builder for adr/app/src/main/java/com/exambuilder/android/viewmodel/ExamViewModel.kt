@@ -29,6 +29,14 @@ class ExamViewModel : ViewModel() {
      */
     var currentExamId by mutableStateOf<String?>(null)
 
+    /** Shared by preview and export; each library open starts with answers hidden. */
+    var studentMode by mutableStateOf(true)
+        private set
+
+    fun setStudentView(enabled: Boolean) {
+        studentMode = enabled
+    }
+
     fun updateMeta(
         title: String = exam.title,
         subject: String = exam.subject,
@@ -42,6 +50,7 @@ class ExamViewModel : ViewModel() {
     fun loadExam(loaded: Exam, archiveId: String?) {
         exam = loaded
         currentExamId = archiveId
+        studentMode = true
     }
 
     fun addQuestion(blockType: BlockType, question: Question) {

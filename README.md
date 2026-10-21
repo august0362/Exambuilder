@@ -25,7 +25,7 @@ Token, database chứa đề/cấu hình cá nhân, ảnh tải lên, khóa ký 
 
 ## Android
 
-[Tải APK 1.3.0](https://github.com/august0362/Exambuilder/releases/download/android-v1.3.0/ExamBuilder.apk). Bản Android có kiểm tra cập nhật qua GitHub Releases.
+[Tải APK 1.4.0](https://github.com/august0362/Exambuilder/releases/download/android-v1.4.0/ExamBuilder.apk). Android mở thẳng Kho đề, bỏ tab Soạn đề và mặc định xem/xuất bản học sinh mỗi lần mở đề. Có kiểm tra cập nhật qua GitHub Releases.
 
 ## Kiểm tra và tài liệu
 

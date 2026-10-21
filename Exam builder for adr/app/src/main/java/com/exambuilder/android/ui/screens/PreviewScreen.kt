@@ -44,7 +44,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -83,8 +82,8 @@ fun PreviewScreen(viewModel: ExamViewModel) {
     val scope = rememberCoroutineScope()
     val exam = viewModel.exam
 
-    var studentMode by rememberSaveable { mutableStateOf(false) }
-    var expanded by remember { mutableStateOf(setOf<String>()) }
+    val studentMode = viewModel.studentMode
+    var expanded by remember(exam) { mutableStateOf(setOf<String>()) }
     var exportMenuOpen by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
     val snackbar = remember { SnackbarHostState() }
@@ -125,9 +124,9 @@ fun PreviewScreen(viewModel: ExamViewModel) {
         snackbarHost = { SnackbarHost(snackbar) },
         topBar = {
             TopAppBar(
-                title = { Text("Xem trước đề") },
+                title = { Text(if (studentMode) "Đề học sinh" else "Đề giáo viên") },
                 actions = {
-                    IconButton(onClick = { studentMode = !studentMode }) {
+                    IconButton(onClick = { viewModel.setStudentView(!studentMode) }) {
                         Icon(
                             if (studentMode) Icons.Default.VisibilityOff else Icons.Default.Visibility,
                             contentDescription = if (studentMode) "Đang ẩn đáp án" else "Đang hiện đáp án"
@@ -157,7 +156,7 @@ fun PreviewScreen(viewModel: ExamViewModel) {
         if (total == 0) {
             Box(Modifier.fillMaxSize().padding(padding).padding(32.dp), contentAlignment = Alignment.Center) {
                 Text(
-                    "Chưa có câu hỏi nào. Sang tab \"Soạn đề\" để thêm.",
+                    "Chưa mở đề nào. Vào Kho đề, kéo đề về rồi bấm Mở.",
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }

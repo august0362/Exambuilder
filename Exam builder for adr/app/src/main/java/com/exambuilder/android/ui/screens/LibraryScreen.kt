@@ -99,7 +99,7 @@ fun LibraryScreen(
         item {
             Text("Đề đã lưu", style = MaterialTheme.typography.titleLarge)
             Text(
-                "Mọi đề bạn soạn đều được tự động lưu vào đây.",
+                "Mở đề từ kho chung hoặc các đề đã lưu trên máy. Mỗi lần mở đều là bản học sinh.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -108,7 +108,7 @@ fun LibraryScreen(
         if (archive.isEmpty()) {
             item {
                 Text(
-                    "Chưa có đề nào. Sang tab \"Soạn đề\" để bắt đầu.",
+                    "Chưa có đề nào. Kết nối mạng và bấm Kéo về để nhận kho đề.",
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }

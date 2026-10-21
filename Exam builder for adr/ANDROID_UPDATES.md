@@ -1,12 +1,12 @@
 # Phát hành cập nhật Android
 
-Nguồn cập nhật là `august0362/Exambuilder`. Bản hiện tại: **1.3.0**, code **4**. App đọc latest **stable release**, tải file `android-update.json`, so sánh `versionCode` rồi mới hiện nút cập nhật. Tên tag không quyết định phiên bản Android; `versionCode` trong APK và JSON phải khớp.
+Nguồn cập nhật là `august0362/Exambuilder`. Bản hiện tại: **1.4.0**, code **5**. App đọc latest **stable release**, tải file `android-update.json`, so sánh `versionCode` rồi mới hiện nút cập nhật. Tên tag không quyết định phiên bản Android; `versionCode` trong APK và JSON phải khớp.
 
 Ngày 21/10/2026, kho và [release Android 1.2.0](https://github.com/august0362/Exambuilder/releases/tag/android-v1.2.0) đã công khai. Đã xác minh API latest, metadata và APK truy cập không cần đăng nhập; kích thước và SHA-256 APK tải về khớp thông tin phát hành. Tải APK tại [ExamBuilder.apk](https://github.com/august0362/Exambuilder/releases/download/android-v1.2.0/ExamBuilder.apk).
 
 ## Tạo gói phát hành
 
-1. Tăng `versionCode` và đổi `versionName` trong `app/build.gradle.kts` cho mỗi bản mới. Bản hiện tại là code **4**, tên **1.3.0**. File `../resources/shared-library.json` phải có trong checkout để Gradle nhúng cấu hình nguồn kho đề chung.
+1. Tăng `versionCode` và đổi `versionName` trong `app/build.gradle.kts` cho mỗi bản mới. Bản hiện tại là code **5**, tên **1.4.0**. File `../resources/shared-library.json` phải có trong checkout để Gradle nhúng cấu hình nguồn kho đề chung.
 2. Giữ nguyên `applicationId` và khóa ký release đang dùng. `keystore.properties` và `.jks` chỉ giữ trên máy, không tải lên GitHub.
 3. Từ thư mục Android, chạy Gradle 8.14.3 với JDK đã cài:
 
@@ -41,4 +41,4 @@ Ngày 21/10/2026, kho và [release Android 1.2.0](https://github.com/august0362/
 
 Kiểm thử tự động bao gồm bộ đọc metadata, thứ tự phiên bản, bản ổn định, giới hạn kích thước và URL nguồn. Trên thiết bị, kiểm tra: mở app ngoại tuyến; bật mạng; bấm kiểm tra; tải bản có code cao hơn; cấp/từ chối quyền cài; cài cập nhật và mở lại kho đề. Thử file có SHA sai hoặc khóa ký khác và xác nhận app từ chối trước khi cài.
 
-Máy dùng bản 1.2.0 (code 3) có thể nhận bản 1.3.0 (code 4) qua nút cập nhật. Để kiểm thử lần tiếp theo từ bản 1.3.0 cần APK có code lớn hơn 4; xuất bản lại code 4 sẽ không hiện cập nhật trên máy đã cài code 4.
+Máy dùng bản 1.2.0 (code 3) hoặc 1.3.0 (code 4) có thể nhận bản 1.4.0 (code 5) qua nút cập nhật. Để kiểm thử lần tiếp theo từ bản 1.4.0 cần APK có code lớn hơn 5; xuất bản lại code 5 sẽ không hiện cập nhật trên máy đã cài code 5.
